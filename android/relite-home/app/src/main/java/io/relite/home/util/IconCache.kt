@@ -7,7 +7,6 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
-import android.util.LruCache
 
 /**
  * Bounded, byte-size-aware icon cache.
@@ -29,9 +28,7 @@ class IconCache(
     maxBytes: Int = DEFAULT_MAX_BYTES,
 ) {
 
-    private val cache = object : LruCache<String, Bitmap>(maxBytes) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
-    }
+    private val cache = BoundedByteCache<String, Bitmap>(maxBytes) { it.byteCount }
 
     fun get(packageName: String, activityName: String): Drawable? {
         val key = "$packageName/$activityName"
@@ -59,7 +56,7 @@ class IconCache(
 
     fun invalidate(packageName: String) {
         val prefix = "$packageName/"
-        val staleKeys = cache.snapshot().keys.filter { it.startsWith(prefix) }
+        val staleKeys = cache.keys().filter { it.startsWith(prefix) }
         staleKeys.forEach { cache.remove(it) }
     }
 
