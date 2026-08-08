@@ -70,6 +70,29 @@ def test_load_packages_yaml_round_trip(tmp_path: Path):
     assert entries["com.example.foo"].action_for("maximum") == "uninstall-user"
 
 
+def test_load_packages_yaml_parses_platform_limitation(tmp_path: Path):
+    data = [
+        {
+            "package": "com.example.stuck",
+            "action": {"safe": "disable"},
+            "platform_limitation": "pm disable-user is silently refused on this OEM build",
+        }
+    ]
+    path = tmp_path / "packages.yaml"
+    path.write_text(yaml.safe_dump(data))
+    entries = load_packages_yaml(path)
+    assert entries["com.example.stuck"].platform_limitation == (
+        "pm disable-user is silently refused on this OEM build"
+    )
+
+
+def test_load_packages_yaml_defaults_platform_limitation_to_none(tmp_path: Path):
+    path = tmp_path / "packages.yaml"
+    path.write_text(yaml.safe_dump([{"package": "com.example.foo"}]))
+    entries = load_packages_yaml(path)
+    assert entries["com.example.foo"].platform_limitation is None
+
+
 def test_load_packages_yaml_rejects_unknown_category(tmp_path: Path):
     path = tmp_path / "packages.yaml"
     path.write_text(yaml.safe_dump([{"package": "com.example.foo", "category": ["not-a-real-category"]}]))

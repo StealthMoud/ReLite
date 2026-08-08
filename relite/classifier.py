@@ -41,6 +41,14 @@ class PackageClassification:
     reason: str = ""
     dependencies: list[str] = field(default_factory=list)
     rollback_supported: bool = True
+    # Set when real-device testing found the platform itself refuses this
+    # action regardless of what ReLite does (e.g. `pm disable-user` exits
+    # 0 but the platform silently keeps the package enabled). The intended
+    # action stays in `action` — it's still correct and harmless to
+    # attempt — but `relite status`'s integrity check treats a mismatch
+    # here as a known limitation, not a compliance failure to alarm about
+    # on every run.
+    platform_limitation: str | None = None
 
     def action_for(self, profile: Profile) -> Action:
         return self.action.get(profile, "keep")
@@ -107,6 +115,7 @@ def load_packages_yaml(path: Path) -> dict[str, PackageClassification]:
             reason=raw.get("reason", "").strip(),
             dependencies=list(raw.get("dependencies", [])),
             rollback_supported=bool(rollback.get("supported", True)),
+            platform_limitation=raw.get("platform_limitation"),
         )
     return entries
 

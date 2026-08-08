@@ -132,6 +132,12 @@
   dependencies: []
   rollback:
     supported: true
+  platform_limitation: >
+    pm disable-user exits 0 but the platform silently refuses the
+    change (new state: default instead of disabled-user) — confirmed
+    on real hardware 2026-08-08. relite status treats this as a known
+    limitation, not a compliance failure, since no action ReLite can
+    take resolves it.
 
 # ============================================================
 # MEDIUM CONFIDENCE — analytics / diagnostics (maximum only)
