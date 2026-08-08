@@ -1,0 +1,360 @@
+"""ReLite command-line interface.
+
+    relite doctor
+    relite device
+    relite snapshot --name stock
+    relite scan
+    relite analyze
+    relite plan --profile safe
+    relite apply --profile safe
+    relite restore --snapshot stock
+    relite tune ram-expansion off
+    relite benchmark --label stock
+    relite report
+    relite network-adblock --hostname <dns-host>
+"""
+
+from __future__ import annotations
+
+import shutil
+import sys
+from pathlib import Path
+
+import click
+from rich.console import Console
+from rich.table import Table
+
+from relite.actions import apply_plan, build_plan
+from relite.adb import AdbClient, AdbUnavailableError
+from relite.classifier import load_database
+from relite.device import probe_device
+from relite.packages import list_packages
+from relite.report import write_report
+from relite.restore import restore_from_journal, restore_from_snapshot
+from relite.snapshot import Snapshot, default_snapshot_dir, take_snapshot
+from relite.tuning import apply_animation_profile, probe_ram_expansion, set_private_dns
+
+console = Console()
+
+DEVICES_ROOT = Path("devices")
+JOURNAL_PATH = Path(".local") / "actions.jsonl"
+
+
+def _find_device_dir(model: str) -> Path | None:
+    for oem_dir in DEVICES_ROOT.glob("*"):
+        candidate = oem_dir / model
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+@click.group()
+@click.option(
+    "--serial", default=None, help="Target a specific ADB serial when multiple devices are attached."
+)
+@click.pass_context
+def main(ctx: click.Context, serial: str | None) -> None:
+    """ReLite — make Android lighter without replacing the hardware layer."""
+    ctx.ensure_object(dict)
+    ctx.obj["serial"] = serial
+
+
+def _client(ctx: click.Context) -> AdbClient:
+    return AdbClient(serial=ctx.obj.get("serial"))
+
+
+def _connected_client(ctx: click.Context) -> tuple[AdbClient, str]:
+    client = _client(ctx)
+    try:
+        serial = client.require_single_device()
+    except AdbUnavailableError as exc:
+        console.print(f"[red]No usable device:[/red] {exc}")
+        sys.exit(1)
+    return AdbClient(serial=serial), serial
+
+
+@main.command()
+def doctor() -> None:
+    """Check the local environment: adb availability and device state."""
+    adb_path = shutil.which("adb")
+    table = Table(title="ReLite doctor")
+    table.add_column("Check")
+    table.add_column("Result")
+
+    table.add_row("adb on PATH", f"[green]yes[/green] ({adb_path})" if adb_path else "[red]no[/red]")
+
+    if adb_path:
+        client = AdbClient()
+        try:
+            devices = client.list_devices()
+        except Exception as exc:  # noqa: BLE001
+            table.add_row("adb devices", f"[red]error: {exc}[/red]")
+        else:
+            if not devices:
+                table.add_row("adb devices", "[yellow]none connected[/yellow]")
+            for serial, state in devices.items():
+                color = "green" if state.value == "device" else "yellow"
+                table.add_row(f"device {serial}", f"[{color}]{state.value}[/{color}]")
+
+    console.print(table)
+
+
+@main.command()
+@click.pass_context
+def device(ctx: click.Context) -> None:
+    """Print device reconnaissance (build props, Treble/AVB/partition state)."""
+    client, serial = _connected_client(ctx)
+    profile = probe_device(client, serial)
+    table = Table(title=f"Device: {profile.model}")
+    table.add_column("Property")
+    table.add_column("Value")
+    for key in [
+        "model", "android_version", "sdk_int", "security_patch", "fingerprint",
+        "treble_enabled", "bootloader_locked", "verified_boot_state",
+        "dynamic_partitions", "virtual_ab",
+    ]:
+        table.add_row(key, str(getattr(profile, key)))
+    console.print(table)
+
+
+@main.command()
+@click.option("--name", required=True, help="Snapshot name, e.g. 'stock'.")
+@click.pass_context
+def snapshot(ctx: click.Context, name: str) -> None:
+    """Take a full snapshot of the current device state."""
+    client, serial = _connected_client(ctx)
+    console.print("Collecting device snapshot (packages, settings, props)...")
+    snap = take_snapshot(client, serial, name)
+    out_dir = default_snapshot_dir(snap.device.model)
+    out_path = out_dir / f"{name}.snapshot.json"
+    snap.save(out_path)
+    console.print(f"[green]Saved snapshot to {out_path}[/green] ({len(snap.packages)} packages)")
+
+
+@main.command()
+@click.pass_context
+def scan(ctx: click.Context) -> None:
+    """Inventory installed packages."""
+    client, _serial = _connected_client(ctx)
+    packages = list_packages(client)
+    console.print(f"{len(packages)} packages found "
+                  f"({sum(p.system for p in packages)} system, "
+                  f"{sum(p.disabled for p in packages)} disabled)")
+
+
+@main.command()
+@click.pass_context
+def analyze(ctx: click.Context) -> None:
+    """Classify installed packages against the device's classification database."""
+    client, serial = _connected_client(ctx)
+    profile = probe_device(client, serial)
+    device_dir = _find_device_dir(profile.model)
+    if device_dir is None:
+        console.print(f"[yellow]No device profile found for '{profile.model}' under devices/. "
+                       "All packages will be treated as unknown (kept).[/yellow]")
+        db = load_database(Path("devices/_unknown"))
+    else:
+        db = load_database(device_dir)
+
+    packages = list_packages(client)
+    table = Table(title="Package classification")
+    table.add_column("Package")
+    table.add_column("Category")
+    table.add_column("Confidence")
+    for pkg in packages:
+        classification = db.classify(pkg.name)
+        if classification.confidence == "none":
+            continue
+        table.add_row(pkg.name, ",".join(classification.category), classification.confidence)
+    console.print(table)
+
+
+@main.command()
+@click.option(
+    "--profile", "profile_name", required=True, type=click.Choice(["safe", "performance", "maximum"])
+)
+@click.pass_context
+def plan(ctx: click.Context, profile_name: str) -> None:
+    """Print the plan of actions a profile would apply, without applying it."""
+    client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    device_dir = _find_device_dir(device_profile.model)
+    if device_dir is None:
+        console.print(f"[red]No device profile for '{device_profile.model}'; nothing to plan.[/red]")
+        return
+    db = load_database(device_dir)
+    installed = list_packages(client)
+    actions = build_plan(installed, db, profile_name)  # type: ignore[arg-type]
+
+    table = Table(title=f"Plan: {profile_name}")
+    table.add_column("Package")
+    table.add_column("Action")
+    table.add_column("Reason")
+    for item in actions:
+        table.add_row(item.package, item.action, item.reason)
+    console.print(table)
+    console.print(f"{len(actions)} package(s) would be changed.")
+
+
+@main.command()
+@click.option(
+    "--profile", "profile_name", required=True, type=click.Choice(["safe", "performance", "maximum"])
+)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
+    """Apply a performance profile: package actions + animation scale."""
+    client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    device_dir = _find_device_dir(device_profile.model)
+    if device_dir is None:
+        console.print(f"[red]No device profile for '{device_profile.model}'; refusing to apply.[/red]")
+        sys.exit(1)
+    db = load_database(device_dir)
+    installed = list_packages(client)
+    actions = build_plan(installed, db, profile_name)  # type: ignore[arg-type]
+
+    console.print(f"Applying {len(actions)} package action(s) [{'dry-run' if dry_run else 'live'}]...")
+    records = apply_plan(client, actions, JOURNAL_PATH, dry_run=dry_run)
+    ok = sum(1 for r in records if r.result == "ok" or (dry_run and r.result == "dry-run"))
+    console.print(f"[green]{ok}/{len(records)} package action(s) applied[/green]")
+
+    if not dry_run:
+        apply_animation_profile(client, profile_name)
+        console.print("Animation scale applied.")
+
+
+@main.command()
+@click.option(
+    "--snapshot", "snapshot_name", default=None, help="Restore from a named snapshot instead of the journal."
+)
+@click.option(
+    "--all", "restore_all", is_flag=True, default=False, help="Full restore: snapshot + journal + tuning."
+)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dry_run: bool) -> None:
+    """Roll back ReLite-managed changes."""
+    client, serial = _connected_client(ctx)
+
+    if snapshot_name or restore_all:
+        device_profile = probe_device(client, serial)
+        snap_path = default_snapshot_dir(device_profile.model) / f"{snapshot_name or 'stock'}.snapshot.json"
+        if not snap_path.exists():
+            console.print(f"[red]Snapshot not found: {snap_path}[/red]")
+            sys.exit(1)
+        snap = Snapshot.load(snap_path)
+        result = restore_from_snapshot(client, snap, dry_run=dry_run)
+    else:
+        result = restore_from_journal(client, JOURNAL_PATH, dry_run=dry_run)
+
+    console.print(f"[green]{len(result.packages_restored)} package(s) restored[/green]")
+    if result.errors:
+        console.print(f"[yellow]{len(result.errors)} error(s):[/yellow]")
+        for err in result.errors:
+            console.print(f"  - {err}")
+
+    if restore_all and not dry_run:
+        set_private_dns(client, None)
+        console.print("Private DNS ad-block disabled.")
+
+
+@main.command()
+@click.argument("setting", type=click.Choice(["ram-expansion"]))
+@click.argument("value", type=click.Choice(["off", "on", "probe"]))
+@click.pass_context
+def tune(ctx: click.Context, setting: str, value: str) -> None:
+    """Apply device tuning outside the package system, e.g. `relite tune ram-expansion probe`."""
+    client, _serial = _connected_client(ctx)
+    if setting == "ram-expansion":
+        probe = probe_ram_expansion(client)
+        if not probe.detected:
+            console.print("[yellow]No RAM Expansion setting key detected on this device. "
+                           "See docs/manual-actions.md for the manual UI path.[/yellow]")
+            return
+        console.print(f"Detected RAM Expansion keys: {probe.found_keys}")
+        if value == "probe":
+            return
+        console.print("[yellow]A confirmed key was found but automatic write is intentionally "
+                       "not wired up until a specific device's key is validated in "
+                       "devices/<oem>/<model>/findings.md.[/yellow]")
+
+
+@main.command(name="network-adblock")
+@click.option("--hostname", default=None, help="Private DNS hostname to enable.")
+@click.option("--disable", "disable_flag", is_flag=True, default=False)
+@click.pass_context
+def network_adblock(ctx: click.Context, hostname: str | None, disable_flag: bool) -> None:
+    """Configure Android Private DNS for optional network-level ad blocking."""
+    client, _serial = _connected_client(ctx)
+    if disable_flag:
+        set_private_dns(client, None)
+        console.print("Private DNS disabled.")
+        return
+    if not hostname:
+        console.print("[red]--hostname is required unless --disable is passed. "
+                       "ReLite does not default to a third-party DNS provider.[/red]")
+        sys.exit(1)
+    ok = set_private_dns(client, hostname)
+    if ok:
+        console.print(f"[green]Private DNS set to {hostname}[/green]. "
+                       "Note: this may not block first-party ads and can affect captive portals.")
+    else:
+        console.print("[red]Failed to set Private DNS.[/red]")
+        sys.exit(1)
+
+
+@main.command()
+@click.option("--label", required=True, help="Label for this benchmark run, e.g. 'stock' or 'safe'.")
+@click.pass_context
+def benchmark(ctx: click.Context, label: str) -> None:
+    """Run the benchmark harness and store a labeled result."""
+    from relite.benchmark import run_benchmark
+
+    client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    result = run_benchmark(client, label)
+
+    out_dir = Path("benchmarks/results") / device_profile.model
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{label}.json"
+    import json as _json
+    out_path.write_text(_json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n")
+    console.print(f"[green]Benchmark '{label}' saved to {out_path}[/green]")
+
+
+@main.command()
+@click.pass_context
+def report(ctx: click.Context) -> None:
+    """Render a Markdown/JSON/CSV comparison report from all saved benchmark results."""
+    from relite.benchmark import BenchmarkResult
+
+    client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    results_dir = Path("benchmarks/results") / device_profile.model
+    if not results_dir.exists():
+        console.print(f"[yellow]No benchmark results found under {results_dir}[/yellow]")
+        return
+
+    results = []
+    for path in sorted(results_dir.glob("*.json")):
+        if path.name in ("latest.json",):
+            continue
+        import json as _json
+        data = _json.loads(path.read_text())
+        results.append(
+            BenchmarkResult(
+                label=data["label"],
+                enabled_packages=data["enabled_packages"],
+                disabled_packages=data["disabled_packages"],
+                system_packages=data["system_packages"],
+                meminfo=data["meminfo"],
+            )
+        )
+
+    paths = write_report(results_dir, device_profile.model, device_profile.fingerprint, results)
+    console.print(f"[green]Report written:[/green] {paths['markdown']}")
+
+
+if __name__ == "__main__":
+    main()
