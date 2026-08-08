@@ -96,6 +96,45 @@ def test_restore_from_snapshot_round_trips_animation_scale(fake_client, fake_run
     assert result.settings_restored["window_animation_scale"] == "1.0"
 
 
+def test_restore_from_snapshot_always_reinstalls_before_enabling(fake_client, fake_runner):
+    """Real-device finding (RMX5303, 2026-08-08): `pm enable` exits 0
+    unconditionally, even for a package uninstalled via
+    `pm uninstall --user 0` — it does NOT reinstall it. A prior version
+    of restore_from_snapshot tried `pm enable` first and only fell back
+    to `install-existing` on failure, so it never actually reinstalled
+    uninstalled packages while still reporting them as "restored".
+    install-existing must always run, not just as a fallback."""
+    device = DeviceProfile(serial="EMULATOR123", props={"ro.product.model": "RMX5303"})
+    snapshot = Snapshot(
+        schema=1,
+        name="stock",
+        created_at="2026-08-08T00:00:00Z",
+        device=device,
+        packages={
+            "com.example.uninstalled": PackageInfo(name="com.example.uninstalled", enabled=True, disabled=False),
+        },
+        settings={},
+    )
+
+    # pm enable "succeeds" trivially (this is the real-device behavior that
+    # masked the bug) but install-existing is what actually restores presence.
+    fake_runner.set_response(
+        ["adb", "-s", "EMULATOR123", "shell", "pm enable com.example.uninstalled"],
+        stdout="Package com.example.uninstalled new state: enabled",
+        returncode=0,
+    )
+    fake_runner.set_response(
+        ["adb", "-s", "EMULATOR123", "shell", "cmd package install-existing --user 0 com.example.uninstalled"],
+        stdout="Package com.example.uninstalled installed for user: 0",
+        returncode=0,
+    )
+
+    restore_from_snapshot(fake_client, snapshot)
+
+    called_commands = [" ".join(c) for c in fake_runner.calls]
+    assert any("install-existing --user 0 com.example.uninstalled" in c for c in called_commands)
+
+
 def test_snapshot_round_trip_preserves_state(tmp_path: Path):
     device = DeviceProfile(serial="EMULATOR123", props={"ro.product.model": "RMX5303"})
     snapshot = Snapshot(

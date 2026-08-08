@@ -85,12 +85,22 @@ def _parse_pm_list(output: str) -> set[str]:
 
 
 def list_packages(client: AdbClient) -> list[PackageInfo]:
-    """Enumerate all packages with their system/enabled/disabled flags."""
-    all_names = _parse_pm_list(client.shell("pm list packages").stdout)
-    system_names = _parse_pm_list(client.shell("pm list packages -s").stdout)
-    third_party_names = _parse_pm_list(client.shell("pm list packages -3").stdout)
-    disabled_names = _parse_pm_list(client.shell("pm list packages -d").stdout)
-    enabled_names = _parse_pm_list(client.shell("pm list packages -e").stdout)
+    """Enumerate all packages with their system/enabled/disabled flags.
+
+    Real-device finding (RMX5303, 2026-08-08): `pm list packages` without
+    `--user 0` lists packages regardless of whether they're actually
+    installed *for that user* — a package removed via
+    `pm uninstall --user 0` still shows up in the bare listing (and even
+    in `-e`, enabled). Without `--user 0`, ReLite would treat an
+    uninstalled-for-user-0 package as fully present, which corrupted
+    plan/restore decisions downstream. `--user 0` makes this listing
+    match what's actually on the device for the profile ReLite manages.
+    """
+    all_names = _parse_pm_list(client.shell("pm list packages --user 0").stdout)
+    system_names = _parse_pm_list(client.shell("pm list packages -s --user 0").stdout)
+    third_party_names = _parse_pm_list(client.shell("pm list packages -3 --user 0").stdout)
+    disabled_names = _parse_pm_list(client.shell("pm list packages -d --user 0").stdout)
+    enabled_names = _parse_pm_list(client.shell("pm list packages -e --user 0").stdout)
 
     packages = []
     for name in sorted(all_names):
