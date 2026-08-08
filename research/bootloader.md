@@ -49,17 +49,40 @@ adb shell getprop sys.boot_completed
 | `fastboot getvar unlocked` | Bootloader's own unlocked-state report, if implemented |
 | `fastboot flashing get_unlock_ability` | Whether OEM unlocking is allowed (requires "OEM unlocking" toggled on in Developer Options first, which is itself a manual, reversible Settings change — not scripted here) |
 
-## Verdict (pending on-device run)
+## Verdict — LOCKED (confirmed on real hardware, 2026-08-08)
 
-**UNKNOWN.** No physical RMX5303 was available in the environment that
-produced this scaffolding. Fill in the table above and this verdict once
-the procedure has been run against a real device, following the dated
-entry format used in `devices/realme/RMX5303/findings.md`.
+Run against a real RMX5303 unit (firmware
+`realme/RMX5303EEA/RE60B8:15/AP3A.240905.015.A2/V.R4T2.1776089958:user/release-keys`).
+The full procedure above completed successfully and the device
+reconnected to `adb` cleanly afterward (~16s host-observed), confirming
+the round-trip is genuinely non-destructive.
 
-Realme devices sold in regions with carrier or regional locking
-restrictions frequently ship with OEM unlocking disabled or gated behind
-a waiting period / account requirement — this is common across the
-realme/BBK family and should be checked for, not assumed absent.
+| Property | Observed value |
+|---|---|
+| `ro.boot.flash.locked` | `1` (locked) |
+| `ro.boot.vbmeta.device_state` | `locked` |
+| `ro.boot.verifiedbootstate` | `green` |
+| `fastboot getvar product` | *(empty — not populated by this bootloader)* |
+| `fastboot getvar current-slot` | `b` (matches `ro.boot.slot_suffix=_b` from Android) |
+| `fastboot getvar unlocked` (bootloader mode) | *(empty — not populated)* |
+| `fastboot getvar unlocked` (fastbootd/userspace mode) | `no` |
+| `fastboot flashing get_unlock_ability` | `FAILED (remote: 'Not implement.')` |
+
+**Verdict: LOCKED.** Every signal agrees. This UNISOC-family bootloader
+does not implement the standard `unlocked`/`product` getvars in
+bootloader mode (both come back empty rather than erroring, which is a
+real, if unhelpful, difference from AOSP reference fastboot behavior —
+don't treat an empty response as a crash or as "unlocked"), and
+`fastboot flashing get_unlock_ability` returns `Not implement.` rather
+than a yes/no — so OEM-unlock-ability cannot be confirmed or ruled out
+via that specific query on this build. The `unlocked: no` reported once
+in fastbootd (userspace fastboot, see `research/treble-gsi.md`) is the
+clearest and most authoritative single signal, and it agrees with the
+Android-side properties.
+
+No attempt was made to toggle "OEM unlocking" in Developer Options or to
+run any unlock command — see "Why this stays manual" below, which
+remains fully in force regardless of this verdict.
 
 ## Why this stays manual even if unlock-able
 

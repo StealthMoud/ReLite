@@ -42,21 +42,46 @@ fastboot reboot
 | `ro.boot.slot_suffix` (`_a`/`_b`/empty) | A/B vs. A-only partition scheme |
 | `fastboot getvar is-userspace` present | `fastbootd` (userspace fastboot) is available, generally required for GSI flashing on dynamic-partition devices |
 
-## Verdict
+## Verdict — POSSIBLY SUPPORTED, BLOCKED BY BOOTLOADER (confirmed 2026-08-08)
 
-**UNKNOWN.** No physical RMX5303 was available in the environment that
-produced this scaffolding. Fill in the signal table and pick one of the
-following once the procedure above has been run:
+Run against a real RMX5303 unit. Every technical (userspace-visible)
+prerequisite is present and confirmed:
 
-- `SUPPORTED` — Treble + compatible VNDK + dynamic partitions/fastbootd
-  confirmed; a mainline GSI is plausible.
-- `POSSIBLY SUPPORTED` — Treble present but one or more signals
-  unconfirmed or ambiguous.
-- `BLOCKED BY BOOTLOADER` — technical signals are favorable but
-  `research/bootloader.md` concluded the bootloader cannot be unlocked.
-- `NOT SUPPORTED` — Treble absent, or VNDK/ABI mismatch makes any
-  available GSI unbootable.
-- `UNKNOWN` — insufficient device access to determine (current status).
+| Signal | Observed value |
+|---|---|
+| `ro.treble.enabled` | `true` |
+| `ro.vndk.version` | `33` |
+| `ro.product.cpu.abilist` | `arm64-v8a,armeabi-v7a,armeabi` |
+| `ro.boot.dynamic_partitions` | `true` |
+| `ro.virtual_ab.enabled` | `true` |
+| `ro.boot.slot_suffix` | `_b` (A/B device) |
+| `fastboot getvar is-userspace` (via `adb reboot fastboot`) | `yes` — **fastbootd confirmed working** |
+| `fastboot getvar super-partition-name` (fastbootd) | `super` — standard dynamic-partition layout |
+| `cmd gsi status` | `Can't find service: gsi` — **no in-Android DSU (Dynamic System Updates) service on this build** |
+| `pm list packages \| grep -i dsu` | no matches — no DSU-related package installed |
+
+**Verdict: `POSSIBLY SUPPORTED, BLOCKED BY BOOTLOADER`.** Treble, a
+recent VNDK (33), dynamic partitions with a confirmed `super` partition,
+Virtual A/B, and a working fastbootd are exactly the prerequisites a
+mainline GSI needs — this device is architecturally GSI-capable. Two
+things stand between that and an actual GSI boot:
+
+1. **The bootloader is locked** (`research/bootloader.md`) — fastbootd
+   can be entered and queried, but `fastboot flash system <gsi>.img`
+   would be rejected (or blocked by AVB) without an OEM unlock, which
+   ReLite does not perform automatically.
+2. **No on-device DSU path exists.** This build ships without the `gsi`
+   system service and without any DSU-related package, so even a
+   theoretical future unlock would require flashing a GSI via fastbootd
+   directly (`fastboot flash system` after unlock) — there is no
+   "install GSI temporarily via Settings" convenience path here the way
+   some AOSP-close devices offer.
+
+Both fastboot-mode and fastbootd-mode round-trips (`adb reboot
+bootloader` → query → `fastboot reboot`, and `adb reboot fastboot` →
+query → `fastboot reboot`) completed cleanly with `adb` reconnecting and
+`sys.boot_completed=1` afterward both times — confirming this entire
+investigation was non-destructive and repeatable.
 
 ## UNISOC platform caveat
 

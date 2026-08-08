@@ -41,17 +41,35 @@ unit.
 | Proprietary/vendor module stubs | Kernel modules that call into closed vendor userspace (camera, sensors, modem) — these determine whether the kernel alone is buildable/bootable without additional binary blobs |
 | Completeness | Whether the published tree is genuinely buildable end-to-end, or a partial source drop (common with GPL-compliance-only kernel releases that omit build scripts or vendor glue) |
 
-## Verdict
+## Verdict — running kernel identified, source tree not yet checked out
 
-**Not yet evaluated against a real device.** This file records where to
-look and what to check; it does not assert that either repository is
-complete, buildable, or actually matches the RMX5303's shipped kernel.
-Update this file once:
+`adb shell uname -a` on a real RMX5303 unit (2026-08-08):
 
-1. A real RMX5303's `uname -a` / build fingerprint has been captured
-   (`devices/realme/RMX5303/findings.md`), and
-2. One of the two repositories above (or a third, not-yet-identified one)
-   has been checked out and inspected for buildability.
+```text
+Linux localhost 5.15.178-android13-8-00006-g0c6055fd2d8b-ab13363910 #1 SMP PREEMPT Tue Apr 15 22:34:18 UTC 2025 aarch64 Toybox
+```
+
+Parsed:
+
+| Field | Value | Notes |
+|---|---|---|
+| Kernel version | `5.15.178` | Matches the "Linux 5.15.x family" documented for `realme_C71-AndroidV-common-source` above — **not** a match for a 6.x-series kernel, ruling out any newer GKI branch. |
+| GKI branch marker | `android13-8` | Android *Common Kernel* branch naming (`android13-5.15`), tracking the kernel's GKI ABI generation — does **not** mean the device runs Android 13 userspace (this unit runs Android 15, confirmed via `ro.build.version.release`). OEMs frequently ship a kernel built against an older GKI branch than their current userspace Android version; normal, not evidence of a mismatch. |
+| Build hash / date | `g0c6055fd2d8b-ab13363910`, dated 2025-04-15 | Useful as an exact anchor if/when a matching commit is sought in either candidate repository. |
+
+**Assessment:** the `5.15.x` kernel version and the "AndroidV" naming in
+`realme_C71-AndroidV-common-source` (V = Android 15's codename/version
+letter, matching this unit's `ro.build.version.release=15`) make that
+repository the more plausible match of the two candidates for *this*
+firmware, more so than the second repository's `ums9230_b_16.0` branch
+(which names Android 16, not yet reflected in this unit's shipped
+`AP3A.240905.015.A2`/`2026-04-01` build). This is a plausibility
+assessment from version-string evidence, **not** a confirmed source
+match — the repository has not been cloned/checked out in this
+environment to verify buildability, defconfig presence, or toolchain
+requirements (the "What to check" table above is still open). No kernel
+modification has been attempted or is planned before that verification
+step, per master plan section 4.
 
 ## Relationship to the GSI path
 
