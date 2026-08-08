@@ -8,8 +8,11 @@ bootloader, and without a custom recovery — and every change it makes is
 reversible.
 
 First target device: **RMX5303 (realme C71)**, UNISOC T7250/UMS9230
-platform, 6 GB RAM. See `docs/supported-devices.md` for how to add
-another.
+platform. (The physical unit ReLite was validated against reports ~8 GB
+RAM via `/proc/meminfo`, not the 6 GB originally assumed — see
+`devices/realme/RMX5303/findings.md`; RAM varies by regional SKU, always
+check your own unit with `relite device`.) See `docs/supported-devices.md`
+for how to add another.
 
 ## What's in the box
 
@@ -65,6 +68,40 @@ relite restore --snapshot stock
 ```
 
 See `docs/recovery.md` for the full recovery ladder.
+
+## Real RMX5303 results (2026-08-08)
+
+Validated end-to-end against a physical RMX5303EEA unit (firmware
+`AP3A.240905.015.A2`, Android 15). Full methodology, all four profiles,
+and PSS/warm-start figures: `benchmarks/results/RMX5303/latest.md`.
+Package-by-package classification evidence:
+`devices/realme/RMX5303/findings.md`.
+
+| Metric | stock | safe | performance | maximum |
+|---|---:|---:|---:|---:|
+| Enabled packages | 400 | 397 | 390 | 385 |
+| Camera cold start (median) | 724 ms | 629 ms | 612 ms | 596 ms |
+| Settings cold start (median) | 1177 ms | 1170 ms | 544 ms | 583 ms |
+
+All three profiles were applied and verified stable on this unit (boot
+completes, SystemUI/Settings/Camera/telephony/Bluetooth intact, no
+crashes in logcat). `performance` is the ReLite-recommended default for
+this device: it captures the confirmed ad/promotional/duplicate-app
+removals with low practical risk, while `maximum` additionally touches a
+few genuinely-useful convenience features (Kids mode, Riding mode, Clone
+Phone) for marginal further gains. MemAvailable/PSS deltas between
+profiles were within normal single-pass measurement noise and are
+reported as-is rather than oversold — see the methodology doc for why.
+
+ReLite Home, installed and tested on this same unit: after fixing a
+real icon-cache regression found during profiling (see
+`devices/realme/RMX5303/findings.md`), its settled PSS (~143 MB) is
+**~29% lower** than the stock launcher's (~202 MB), measured back-to-back
+on-device.
+
+Manual, human-only validation (calls, SMS, GPS, fingerprint, etc.) is
+tracked separately and was not a blocker for any of the above — see
+`docs/RMX5303-validation-checklist.md`.
 
 ## Building ReLite Home
 
@@ -124,12 +161,17 @@ destructive-and-therefore-manual, and why.
 
 ## Status
 
-Pre-1.0, Stage 1 (stock-ROM CLI + launcher) functionally complete and
-tested against fixtures/mocks and, for ReLite Home, an actual Android SDK
-build. **No physical RMX5303 has been used to validate this yet** — see
-`devices/realme/RMX5303/findings.md` for exactly what is and isn't
-confirmed on real hardware, and `docs/supported-devices.md` for how to
-help close that gap.
+Pre-1.0. Stage 1 (stock-ROM CLI + launcher) is functionally complete,
+unit-tested (`pytest`, no device required), and validated end-to-end
+against a physical RMX5303 unit — device detection, all three profiles,
+benchmarking, restore, and ReLite Home were all exercised on real
+hardware; see `devices/realme/RMX5303/findings.md` for the full evidence
+trail, including two real bugs found and fixed during that pass (a
+false-success bug in `pm disable-user` handling, and a launcher icon-cache
+memory regression). Manual, human-only checks (calls, SMS, fingerprint,
+etc. — see `docs/RMX5303-validation-checklist.md`) remain pending, as
+does bootloader unlock/GSI work (currently blocked by a locked
+bootloader — see `research/bootloader.md`).
 
 ## Contributing
 
