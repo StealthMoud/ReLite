@@ -1,0 +1,5 @@
+label,enabled_packages,disabled_packages,system_packages,mem_available_kb
+stock,400,2,301,5176736
+safe,397,5,301,5359204
+performance,390,12,301,5252636
+maximum,385,17,301,5132800
