@@ -1,15 +1,30 @@
 # ReLite
 
-**Make Android lighter without replacing the hardware layer.**
+**A reversible Android performance and debloating toolkit, with an
+original lightweight launcher.**
 
-ReLite is an open-source Android optimization toolkit and a lightweight,
-original launcher. It works over ADB, without root, without an unlocked
-bootloader, and without a custom recovery — and every change it makes is
-reversible.
+First validated device: **realme C71 / RMX5303**
 
-First target device: **RMX5303 (realme C71)**, UNISOC T7250/UMS9230
-platform. (The physical unit ReLite was validated against reports ~8 GB
-RAM via `/proc/meminfo`, not the 6 GB originally assumed — see
+```text
+Settings cold launch:  1177 ms  →  544 ms   (performance profile)
+Camera cold launch:     724 ms  →  612 ms   (performance profile)
+Launcher settled PSS:  109 MB   →   75 MB   (ReLite Home vs. stock, −31.5%)
+Enabled packages:       400     →   390     (performance profile)
+
+Recommended profile: performance
+```
+
+Full methodology and every number's provenance:
+`benchmarks/results/RMX5303/v0.1.0.md`. These are real measurements from
+a physical unit, not projections — see `docs/safety.md` and
+`benchmarks/methodology.md` for how they were produced and what they
+don't claim.
+
+ReLite works over ADB, without root, without an unlocked bootloader, and
+without a custom recovery — every change it makes is reversible. First
+target device: **RMX5303 (realme C71)**, UNISOC T7250/UMS9230 platform.
+(The physical unit ReLite was validated against reports ~8 GB RAM via
+`/proc/meminfo`, not the 6 GB originally assumed — see
 `devices/realme/RMX5303/findings.md`; RAM varies by regional SKU, always
 check your own unit with `relite device`.) See `docs/supported-devices.md`
 for how to add another.
@@ -42,7 +57,17 @@ disabling zRAM, aggressive background-process limits, task killers) that
 often makes a phone *less* responsive. See `docs/safety.md` for the exact
 list of what ReLite refuses to do and why.
 
-## Quick start
+## Installation
+
+Requires: a computer (macOS/Linux; Windows works but is less tested),
+Python 3.11+, and an Android phone with **USB debugging enabled**
+(Settings → About phone → tap "Build number" 7 times to unlock Developer
+Options, then Settings → Developer options → USB debugging → on). Plug
+the phone in with a USB cable and tap "Allow" on the "Allow USB
+debugging?" prompt that appears on the phone — this authorizes your
+computer, once, and is how `adb` (and therefore ReLite) is allowed to
+talk to the device at all. No root, no unlocked bootloader, nothing else
+to configure on the phone.
 
 ```bash
 git clone https://github.com/ReLite/ReLite.git
@@ -50,32 +75,33 @@ cd ReLite
 ./scripts/bootstrap.sh
 source .venv/bin/activate
 
-relite doctor
-relite snapshot --name stock
-relite scan
-relite analyze
-relite plan --profile safe
-relite apply --profile safe
-relite benchmark --label stock
-relite benchmark --label safe
-relite report
+adb devices          # confirm your phone shows up as "device", not "unauthorized"
+relite doctor        # confirms adb + a connected device
+relite device         # shows what ReLite detected about your phone
+relite snapshot --name stock   # back up the current state before changing anything
+relite apply --profile performance
 ```
 
-Something look wrong afterward?
+That's the entire normal install path — you do not need to know
+anything about Android internals, and nothing above touches the
+bootloader, recovery, or system partitions. Something look wrong
+afterward?
 
 ```bash
 relite restore --snapshot stock
 ```
 
-See `docs/recovery.md` for the full recovery ladder.
+See `docs/recovery.md` for the full recovery ladder, and
+`docs/RMX5303-validation-checklist.md` for what's worth manually
+double-checking on your specific phone/apps after applying a profile.
 
-## Real RMX5303 results (2026-08-08)
+## Real RMX5303 results (v0.1.0, 2026-08-08)
 
 Validated end-to-end against a physical RMX5303EEA unit (firmware
-`AP3A.240905.015.A2`, Android 15). Full methodology, all four profiles,
-and PSS/warm-start figures: `benchmarks/results/RMX5303/latest.md`.
-Package-by-package classification evidence:
-`devices/realme/RMX5303/findings.md`.
+`AP3A.240905.015.A2`, Android 15). Full methodology and every number's
+provenance: `benchmarks/results/RMX5303/v0.1.0.md`. Package-by-package
+classification evidence: `devices/realme/RMX5303/findings.md` and the
+generated table at `devices/realme/RMX5303/PACKAGES.md`.
 
 | Metric | stock | safe | performance | maximum |
 |---|---:|---:|---:|---:|
@@ -83,25 +109,66 @@ Package-by-package classification evidence:
 | Camera cold start (median) | 724 ms | 629 ms | 612 ms | 596 ms |
 | Settings cold start (median) | 1177 ms | 1170 ms | 544 ms | 583 ms |
 
-All three profiles were applied and verified stable on this unit (boot
-completes, SystemUI/Settings/Camera/telephony/Bluetooth intact, no
-crashes in logcat). `performance` is the ReLite-recommended default for
-this device: it captures the confirmed ad/promotional/duplicate-app
-removals with low practical risk, while `maximum` additionally touches a
-few genuinely-useful convenience features (Kids mode, Riding mode, Clone
-Phone) for marginal further gains. MemAvailable/PSS deltas between
-profiles were within normal single-pass measurement noise and are
-reported as-is rather than oversold — see the methodology doc for why.
+All four profiles were applied and verified stable on this unit across
+two independent validation passes (boot completes, SystemUI/Settings/
+Camera/telephony/Bluetooth intact, no crashes in logcat), including a
+complete restore round-trip that reproduced a byte-for-byte identical
+package set. `performance` is the ReLite-recommended default for this
+device — see `docs/profiles.md` for the full inheritance model and what
+qualifies a package for each level.
 
-ReLite Home, installed and tested on this same unit: after fixing a
-real icon-cache regression found during profiling (see
-`devices/realme/RMX5303/findings.md`), its settled PSS (~143 MB) is
-**~29% lower** than the stock launcher's (~202 MB), measured back-to-back
-on-device.
+ReLite Home, installed and tested on this same unit: settled PSS
+**74,817 kB, ~31.5% lower** than the stock launcher's 109,181 kB
+(median of 3 runs each, decay-curve-verified settle time — see
+`benchmarks/methodology.md`).
 
 Manual, human-only validation (calls, SMS, GPS, fingerprint, etc.) is
 tracked separately and was not a blocker for any of the above — see
 `docs/RMX5303-validation-checklist.md`.
+
+## What ReLite is (and isn't)
+
+ReLite currently **is**:
+
+- reversible Android package debloating over ADB, no root;
+- RMX5303-specific optimization, validated on real hardware;
+- a benchmarking harness that reports real, reproducible measurements;
+- an original, lightweight, One UI-*inspired* launcher (ergonomics and
+  spacing, not copied assets — see `NOTICE.md`);
+- experimental research toward a future ReLite OS (`research/`),
+  entirely separate from and non-blocking for the above.
+
+ReLite currently is **not**:
+
+- a custom ROM;
+- a Samsung One UI port (no Samsung code, assets, or branding — ever);
+- a bootloader unlocker (RMX5303's bootloader is confirmed locked and
+  ReLite does not attempt to change that — see `research/bootloader.md`);
+- a root framework;
+- a kernel overclocking or CPU-governor-tweaking tool (see
+  `docs/safety.md` for the full list of "Android optimization folklore"
+  ReLite deliberately refuses to do).
+
+## Safety, in short
+
+- **`relite snapshot --name stock` first, always** — the quick start
+  above does this before anything else, so there's a known-good state to
+  return to.
+- Every package change is per-user (`--user 0`) and reversible: `disable`
+  reverses with `enable`; `uninstall-user` reverses with
+  `install-existing --user 0`. Nothing is ever deleted from `/system`,
+  `/product`, `/vendor`, or `/system_ext`, and no partition is ever
+  erased or reflashed.
+- The bootloader is never unlocked, and no `fastboot flash`/`erase`
+  command is ever run automatically — see `docs/manual-actions.md` for
+  the (currently empty, nothing-needed-yet) list of steps ReLite treats
+  as too destructive to automate.
+- `relite restore` exists specifically to undo everything above, and is
+  tested as a first-class feature, not an afterthought — see
+  `docs/recovery.md`. `relite status` tells you what profile is active
+  and whether the device's live state actually matches it.
+
+Full detail: `docs/safety.md`.
 
 ## Building ReLite Home
 
