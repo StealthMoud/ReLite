@@ -1,25 +1,109 @@
 # RMX5303 (realme C71) package classification database.
 #
-# IMPORTANT: this file is a *starting candidate set*, not a validated
-# on-device inventory. Per the master plan (section 8/10), ReLite must
-# discover the actual installed package set from the live device via
-# `relite scan` / `relite analyze` before removing anything — this file
-# alone does not authorize any action.
+# Validated against a real unit on 2026-08-08 — see findings.md for the
+# exact evidence trail (dumpsys package flags/permissions, on-device
+# Settings "App info" labels captured via uiautomator, receiver/service
+# inspection). Firmware at validation time:
+#   realme/RMX5303EEA/RE60B8:15/AP3A.240905.015.A2/V.R4T2.1776089958:user/release-keys
+#   (display id RMX5303GDPR_15_C.55, EEA/Germany region)
 #
-# Entries below are seeded from package names that are publicly and
-# consistently documented (by multiple independent community debloat
-# references, including Universal Android Debloater NG, used only as a
-# secondary signal per section 10) as realme/ColorOS-family promotional,
-# recommendation, or analytics components. Every entry is intentionally
-# capped at `confidence: medium` until it has been cross-checked against
-# an actual RMX5303 `pm list packages -f` + `dumpsys package` dump — see
-# findings.md for validation status. Nothing here is `confidence: high`
-# yet for that reason.
+# The previous seed set (pre-device-validation) has been replaced: none
+# of its guessed package names (com.heytap.mcs, com.heytap.usercenter,
+# com.coloros.assistantscreen, com.coloros.karaoke, com.coloros.gamespaceui,
+# com.nearme.romupdate, com.coloros.recommend, com.oppo.market,
+# com.coloros.translate.engine) are actually installed on this unit — they
+# simply never match during `relite plan`/`relite apply`, but kept stale
+# guesses out of a "validated" database is misleading, so they were
+# removed rather than left alongside real entries.
 #
 # Schema: see relite/classifier.py (PackageClassification / VALID_*).
 
+# ============================================================
+# HIGH CONFIDENCE — advertising / promotional (master plan section 13)
+# ============================================================
+
 - package: com.heytap.market
-  category: [cloud, optional]
+  category: [ads, cloud]
+  confidence: high
+  action:
+    safe: disable
+    performance: disable
+    maximum: uninstall-user
+  risk: medium
+  reason: >
+    "App Market" — OEM app store. Confirmed via on-device Settings app-info
+    label. SYSTEM, PRIVILEGED, not persistent, no other installed package
+    declares a dependency on it (checked via dumpsys package cross-refs).
+    Drives Hot Apps/Hot Games promotion and install notifications. Losing
+    it as an install source is an acceptable tradeoff since Play Store is
+    installed and preferred by most users; still not touched in `safe`
+    because bundled OEM-app updates route through it.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.heytap.pictorial
+  category: [ads, recommendations]
+  confidence: high
+  action:
+    safe: disable
+    performance: disable
+    maximum: uninstall-user
+  risk: low
+  reason: >
+    "Lock Screen Magazine" — confirmed via on-device Settings app-info
+    label. Serves curated/promotional lock-screen wallpapers; its
+    companion `com.coloros.bootreg` references a
+    "com.permission.haokan.PICTORIAL_USERAGREEMENT" user-agreement string,
+    confirming a third-party content-partner (Haokan) tie-in. Textbook
+    match for master plan section 13's "lock-screen promotional content".
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.oplus.commercial
+  category: [ads]
+  confidence: high
+  action:
+    safe: disable
+    performance: disable
+    maximum: uninstall-user
+  risk: medium
+  reason: >
+    "CommercialMidGround" — confirmed via on-device Settings app-info
+    label; name is self-describing. Holds `android.permission.DISABLE_KEYGUARD`,
+    which is the permission needed to show a full-screen overlay over the
+    lock screen without unlocking — a known pattern for OEM lock-screen ad
+    surfaces. PRIVILEGED but not persistent; no other package's manifest
+    declares a dependency on it.
+  dependencies: []
+  rollback:
+    supported: true
+
+# ============================================================
+# MEDIUM CONFIDENCE — recommendations / push (performance+, not safe)
+# ============================================================
+
+- package: com.oppo.quicksearchbox
+  category: [recommendations]
+  confidence: medium
+  action:
+    safe: keep
+    performance: disable
+    maximum: uninstall-user
+  risk: low
+  reason: >
+    "Global Search" — confirmed label. Boot-starting OEM search overlay
+    with content suggestions; PRIVILEGED but not persistent. Not the
+    system's IME/assist provider. Kept in `safe` since some users use it
+    as their home-screen search shortcut; the app drawer's own local
+    search (ReLite Home) is a full replacement.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.lockassistant
+  category: [recommendations]
   confidence: medium
   action:
     safe: keep
@@ -27,27 +111,116 @@
     maximum: disable
   risk: medium
   reason: >
-    OEM app store (realme/heytap family). Disabling removes background
-    promotional activity but also disables that store as an install
-    source; keep in `safe`, only touch in `performance`/`maximum`.
+    Labeled simply "Assistant". Declares a push-message receiver
+    (`.push.LockAssistantPushService`, `com.heytap.mcs.permission.SEND_PUSH_MESSAGE`)
+    and a `.utils.PersistentService`, plus `SYSTEM_ALERT_WINDOW` and
+    `CALL_PRIVILEGED`. Sits in the same lock-screen-content ecosystem as
+    `com.heytap.pictorial` (shared MCS push channel). Not disabled in
+    `safe` because the ambiguous name and `CALL_PRIVILEGED` permission
+    warrant more caution than the unambiguous ad packages above.
+
+    KNOWN ISSUE (found applying `performance` on real hardware,
+    2026-08-08): `pm disable-user` for this package exits 0 but the
+    platform silently refuses the change (`new state: default` instead
+    of `new state: disabled-user`) — this OEM build appears to protect it
+    from user-level disable independently of ReLite's own policy.
+    `relite/actions.py::apply_plan` now detects this (checks for
+    "disabled-user" in the command's stdout, not just exit code) and
+    records it as an error rather than a false "ok". The action stays
+    `disable` here since it's still the correct intent; applying it is a
+    safe no-op on this device rather than a failure to route around.
   dependencies: []
   rollback:
     supported: true
 
-- package: com.heytap.mcs
-  category: [analytics, cloud]
+# ============================================================
+# MEDIUM CONFIDENCE — analytics / diagnostics (maximum only)
+# ============================================================
+
+- package: com.oplus.stdid
+  category: [analytics, diagnostics]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: medium
+  reason: >
+    "StdID" — a cross-subsystem standard-ID service with an unusually
+    broad permission set for its apparent purpose, including
+    `android.permission.RECOVERY` and a `com.heytap.mcs.permission.SEND_PUSH_MESSAGE`-
+    adjacent grant. Likely backs device/analytics identifiers used by
+    other OPLUS apps' push and AI features. Not PRIVILEGED. Given the
+    `RECOVERY` permission, only disabled in `maximum` pending more
+    evidence on what depends on it.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.oplus.postmanservice
+  category: [diagnostics]
   confidence: medium
   action:
     safe: keep
     performance: disable
     maximum: disable
-  risk: low
-  reason: OEM cloud push/messaging component used for promotional pushes.
+  risk: medium
+  reason: >
+    Labeled "Diagnostic Tool" — not a push/ads service as its package name
+    suggested before validation (corrected here). PRIVILEGED, with a
+    notably broad permission set for a diagnostics tool: `ACCESS_FINE_LOCATION`,
+    `INTERACT_ACROSS_USERS_FULL`, `com.oplus.permission.safe.FINGERPRINT`,
+    `NETWORK_SETTINGS`, `SYSTEM_ALERT_WINDOW`. Believed to back
+    remote/in-store diagnostic sessions (warranty service centers).
+    Not needed for normal use; kept in `safe` only because "used by
+    official repair diagnostics" is a real, if infrequent, use case.
   dependencies: []
   rollback:
     supported: true
 
-- package: com.heytap.usercenter
+- package: com.oppo.engineermode
+  category: [diagnostics]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: >
+    Factory/engineer test-menu app. No user-facing "App info" screen was
+    reachable via the Settings deep link (consistent with a
+    hidden/non-launcher component). Not needed for normal use.
+  dependencies: [com.oppo.engineermode.camera, com.oppo.engineermode.network]
+  rollback:
+    supported: true
+
+- package: com.oppo.engineermode.camera
+  category: [diagnostics]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: Camera-specific factory test component of com.oppo.engineermode; same reasoning.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.oppo.engineermode.network
+  category: [diagnostics]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: Network-specific factory test component of com.oppo.engineermode; same reasoning.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.activation
   category: [cloud, optional]
   confidence: medium
   action:
@@ -55,40 +228,146 @@
     performance: disable
     maximum: disable
   risk: low
-  reason: OEM account/user-center app, optional unless the OEM account is used.
-  dependencies: []
-  rollback:
-    supported: true
-
-- package: com.coloros.assistantscreen
-  category: [recommendations, optional]
-  confidence: medium
-  action:
-    safe: disable
-    performance: disable
-    maximum: uninstall-user
-  risk: low
   reason: >
-    "Smart/App Assist" home-adjacent feed screen historically used for
-    content recommendations on realme/ColorOS-family skins.
+    "E-warranty card" — device registration/warranty-activation nudge
+    flow. Not needed after initial setup/registration is complete.
   dependencies: []
   rollback:
     supported: true
 
-- package: com.coloros.karaoke
-  category: [optional, games]
-  confidence: medium
+# ============================================================
+# OPTIONAL / DUPLICATE OEM APPS (performance/maximum only)
+# ============================================================
+
+- package: com.realme.as.music
+  category: [optional]
+  confidence: high
   action:
     safe: keep
     performance: disable
     maximum: uninstall-user
   risk: low
-  reason: Bundled optional entertainment feature, unrelated to core telephony/UI.
+  reason: >
+    "Music" — bundled default music player, duplicate of Play Store options (Spotify/YT Music/etc).
   dependencies: []
   rollback:
     supported: true
 
-- package: com.coloros.gamespaceui
+- package: com.coloros.weather2
+  category: [optional]
+  confidence: high
+  action:
+    safe: keep
+    performance: disable
+    maximum: disable
+  risk: low
+  reason: >
+    "Weather" — bundled weather app/widget provider; duplicate of Google's weather integration for most users.
+  dependencies: [com.coloros.weather.service]
+  rollback:
+    supported: true
+
+- package: com.coloros.weather.service
+  category: [optional]
+  confidence: high
+  action:
+    safe: keep
+    performance: disable
+    maximum: disable
+  risk: low
+  reason: >
+    "Weather Services" — backend for com.coloros.weather2; same reasoning.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.compass2
+  category: [optional]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: >
+    "Compass" — low-value bundled utility, harmless to keep, low-priority disable candidate.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.operationManual
+  category: [optional]
+  confidence: high
+  action:
+    safe: keep
+    performance: disable
+    maximum: disable
+  risk: low
+  reason: >
+    "Help & feedback" — OEM support app, not needed for daily use.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.childrenspace
+  category: [optional]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: >
+    "Kids mode" — genuine parental-control feature some families use; low-priority disable candidate.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.realme.backuprestore
+  category: [optional]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: >
+    "Clone Phone" — occasionally useful device-migration tool; kept until maximum.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.realme.smartdrive
+  category: [optional]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: >
+    "Riding mode" — genuine DND-while-driving convenience feature; kept until maximum.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.oplus.encryption
+  category: [optional, security]
+  confidence: low
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: medium
+  reason: >
+    "Private Safe" — encrypted file vault. Some users may store files in
+    it; disabling is reversible but could confuse a user who forgot they
+    used it. Only touched in `maximum`.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.oplus.gamespace
   category: [games, optional]
   confidence: medium
   action:
@@ -96,74 +375,50 @@
     performance: keep
     maximum: disable
   risk: low
-  reason: Game mode overlay; kept by default since it can affect thermal/perf UX for gamers.
-  dependencies: []
-  rollback:
-    supported: true
-
-- package: com.oppo.quicksearchbox
-  category: [recommendations, browser]
-  confidence: medium
-  action:
-    safe: disable
-    performance: disable
-    maximum: uninstall-user
-  risk: low
-  reason: OEM search/recommendation overlay component, not the system search provider.
-  dependencies: []
-  rollback:
-    supported: true
-
-- package: com.nearme.romupdate
-  category: [update, critical]
-  confidence: high
-  action:
-    safe: keep
-    performance: keep
-    maximum: keep
-  risk: high
   reason: >
-    Firmware/OTA update path. Removing OTA capability is out of scope for
-    a reversible optimization tool; also referenced in protected-packages.yaml.
+    "Game Space" — game-mode overlay; kept by default since it affects thermal/perf UX for gamers, matching the seeded policy's original reasoning.
   dependencies: []
   rollback:
     supported: true
 
-- package: com.coloros.recommend
-  category: [recommendations, analytics]
-  confidence: medium
-  action:
-    safe: disable
-    performance: disable
-    maximum: uninstall-user
-  risk: low
-  reason: Named recommendation/content-suggestion service typical of this OEM family.
-  dependencies: []
-  rollback:
-    supported: true
-
-- package: com.oppo.market
-  category: [cloud, ads]
-  confidence: medium
-  action:
-    safe: disable
-    performance: disable
-    maximum: uninstall-user
-  risk: low
-  reason: Secondary OEM store/app-promotion surface distinct from com.heytap.market on some builds.
-  dependencies: []
-  rollback:
-    supported: true
-
-- package: com.coloros.translate.engine
+- package: com.coloros.filemanager
   category: [optional]
   confidence: low
   action:
     safe: keep
     performance: keep
-    maximum: disable
+    maximum: keep
   risk: low
-  reason: On-device translation engine; optional but low confidence on removal safety without validation.
+  reason: >
+    "My Files" — file manager; kept by default since no equally-accessible system replacement is guaranteed installed (DocumentsUI covers some but not all of its UX).
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.gallery3d
+  category: [optional]
+  confidence: low
+  action:
+    safe: keep
+    performance: keep
+    maximum: keep
+  risk: low
+  reason: >
+    "Photos" (OEM gallery) — many users rely on this as their primary photo viewer/editor; not disabled by default in any profile pending more evidence.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.video
+  category: [optional]
+  confidence: low
+  action:
+    safe: keep
+    performance: keep
+    maximum: keep
+  risk: low
+  reason: >
+    "Videos (System)" — default video player; kept pending evidence a removal wouldn't break "open with" handling for local video files.
   dependencies: []
   rollback:
     supported: true

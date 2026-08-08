@@ -3,12 +3,17 @@
 # packages.yaml says. See relite/classifier.py: ClassificationDatabase.decide()
 # checks this list before consulting the classification database at all.
 #
-# This is intentionally conservative and framework/AOSP-name based for the
-# categories the master plan (section 9) explicitly calls out as
-# boot/security/telephony-critical. Real device dumps may reveal additional
-# OEM-specific critical services (e.g. a realme-branded SystemUI companion
-# process) — add them here as they're identified in findings.md, not removed
-# from consideration by omission.
+# Validated against a real unit on 2026-08-08 (see findings.md). Every
+# entry below was cross-checked against this device's actual
+# `pm list packages -f` output — placeholder/generic AOSP names that
+# turned out not to exist on this build (e.g. com.android.packageinstaller,
+# com.android.biometrics, com.android.webview, com.nearme.romupdate) were
+# replaced with the names this device actually uses (mostly Google
+# mainline-module packages: com.google.android.packageinstaller,
+# com.google.android.networkstack, etc). Framework-name entries that ARE
+# present are kept even though this device happens to use the Google
+# variant elsewhere, in case a future device (or an OTA on this one)
+# reverts to the AOSP-named package.
 
 protected:
   # Core framework / UI shell
@@ -20,85 +25,131 @@ protected:
     reason: Settings app.
   - package: com.android.settings.intelligence
     reason: Settings search/suggestions backend used by the Settings app itself.
-  - package: com.android.packageinstaller
-    reason: Package installation.
   - package: com.google.android.packageinstaller
-    reason: Package installation (AOSP/GMS variant).
-  - package: com.android.permissioncontroller
-    reason: Runtime permission grant UI and enforcement.
+    reason: Package installation. (This device does not have com.android.packageinstaller — confirmed via pm list.)
   - package: com.google.android.permissioncontroller
-    reason: Runtime permission grant UI and enforcement (GMS variant).
+    reason: Runtime permission grant UI and enforcement. (This device does not have com.android.permissioncontroller.)
 
   # Security / keystore
   - package: com.android.keychain
     reason: System keychain/keystore UI.
+  - package: com.oplus.safecenter
+    reason: >
+      "Safe Center" — OEM security/permission-management center. Confirmed
+      installed, SYSTEM. Protected pending evidence it can be safely
+      disabled without breaking permission management flows.
 
   # Telephony / IMS / emergency
   - package: com.android.phone
     reason: Telephony stack — calls, emergency calling.
   - package: com.android.server.telecom
     reason: Telecom/call routing framework.
-  - package: com.android.ims
-    reason: IMS (VoLTE/VoWiFi) stack.
   - package: com.android.carrierconfig
     reason: Carrier configuration required for correct radio/APN behavior.
   - package: com.android.stk
     reason: SIM toolkit.
   - package: com.android.providers.telephony
     reason: SMS/MMS/APN content provider.
+  - package: com.oplus.cota
+    reason: >
+      "Carrier settings update" — confirmed via on-device Settings
+      app-info label. Carrier config delivery path.
 
   # Wi-Fi / Bluetooth / network
-  - package: com.android.wifi.resources
-    reason: Wi-Fi stack resources.
+  - package: com.google.android.wifi.resources
+    reason: Wi-Fi stack resources (mainline module; this device does not have com.android.wifi.resources as a standalone package).
+  - package: com.android.wifi.resources.uni_marlin3
+    reason: Device/platform-specific Wi-Fi resource overlay observed on this unit.
+  - package: com.android.wifi.resources.uni_marlin3.mainline
+    reason: Mainline variant of the above Wi-Fi resource overlay.
   - package: com.android.bluetooth
     reason: Bluetooth stack.
-  - package: com.android.networkstack
-    reason: Core network connectivity stack.
-  - package: com.android.captiveportallogin
-    reason: Captive portal detection required for Wi-Fi network validation.
+  - package: com.google.android.networkstack
+    reason: Core network connectivity stack (mainline module; com.android.networkstack is not installed as a standalone package on this device).
+  - package: com.google.android.networkstack.tethering
+    reason: Tethering component of the network stack mainline module.
+  - package: com.google.android.captiveportallogin
+    reason: Captive portal detection required for Wi-Fi network validation (mainline module).
 
   # Biometrics / camera
-  - package: com.android.biometrics
-    reason: Fingerprint/biometric authentication framework.
-  - package: com.android.camera2
-    reason: Reference camera stack dependency (even if OEM camera app differs).
+  - package: com.oplus.camera
+    reason: >
+      "Camera" — confirmed via on-device Settings app-info label. This is
+      the actual installed camera app on this device (com.android.camera2
+      is not installed here).
+  - package: com.android.cameraextensions
+    reason: Camera extensions proxy service.
+  - package: com.sprd.cameracalibration
+    reason: UNISOC/Spreadtrum camera calibration component — hardware-adjacent, required for correct camera output on this SoC.
 
   # Storage / media / providers
   - package: com.android.providers.media
     reason: Media provider — required by nearly all media-consuming apps.
   - package: com.android.providers.downloads
     reason: Downloads provider.
+  - package: com.android.providers.downloads.ui
+    reason: Downloads provider UI companion.
   - package: com.android.providers.contacts
     reason: Contacts provider — required for calls/SMS/contacts apps.
-  - package: com.android.documentsui
-    reason: DocumentsUI file picker/storage access framework UI.
+  - package: com.google.android.documentsui
+    reason: DocumentsUI file picker/storage access framework UI (this device does not have com.android.documentsui as a standalone package).
   - package: com.android.externalstorage
     reason: External storage provider.
   - package: com.android.mtp
     reason: USB file transfer provider.
+  - package: com.android.storagemanager
+    reason: Storage manager (free-up-space UI, storage settings backend).
+  - package: com.coloros.phonemanager
+    reason: >
+      "Phone Manager" — confirmed PRIVILEGED with
+      signature|privileged permissions incl.
+      com.oplus.phonemanager.permission.ACS_SERVICE. Deeply integrated
+      with permission/storage/security management on this OEM skin;
+      protected pending evidence it's safe to touch.
 
   # WebView
   - package: com.google.android.webview
-    reason: System WebView provider — no validated replacement configured.
-  - package: com.android.webview
-    reason: AOSP WebView provider fallback.
+    reason: System WebView provider (this device does not have com.android.webview as a fallback package).
 
   # Location
   - package: com.android.location.fused
     reason: Fused location provider backend.
 
   # Update / recovery
-  - package: com.nearme.romupdate
-    reason: OTA/firmware update path (see packages.yaml — recorded there too).
-  - package: com.android.updater
-    reason: Generic AOSP-family updater surface, if present.
+  - package: com.oppo.ota
+    reason: >
+      OTA update client — confirmed installed on this device. This device
+      does not have com.nearme.romupdate; com.oppo.ota is the actual OTA
+      path here. (com.oplus.cota, the carrier-config OTA path, is listed
+      once above under Telephony.)
+
+  # SystemUI-adjacent infrastructure (discovered via real-device dumpsys)
+  - package: com.oplus.systemui.plugins
+    reason: SystemUI plugin framework — SYSTEM, boot-adjacent, part of the SystemUI rendering pipeline.
+  - package: com.oplus.uiengine
+    reason: OEM UI/animation engine used by SystemUI and the launcher; disabling risks breaking system animations.
+  - package: com.oplus.gesture
+    reason: >
+      "Gestures & motions" — confirmed PERSISTENT flag via dumpsys. Controls
+      gesture navigation; disabling could break system-wide gesture nav.
+  - package: com.oplus.mediacontroller
+    reason: >
+      "AospMediaController" — media session/notification controls; needed for media playback UI.
+  - package: com.oplus.aod
+    reason: >
+      "Always-On Display" — a genuine, commonly-used display feature, not bloat.
+  - package: com.oplus.audio.effectcenter
+    reason: >
+      "AudioEffectCenter" — audio output/effects configuration; protect to avoid breaking audio routing.
+  - package: com.oplus.batterywarning
+    reason: >
+      "Battery" — battery health/warning UI, tied into power management.
 
   # Current launcher until ReLite Home is confirmed functional as default.
   - package: com.android.launcher3
-    reason: Do not disable any launcher, including the OEM default, until ReLite Home is set as default and confirmed working end-to-end.
-  - package: com.oppo.launcher
     reason: >
-      Candidate realme/ColorOS-family default launcher package name.
-      Confirm the actual package via `relite scan` on a real RMX5303 and
-      correct/extend this entry in findings.md — keep protected either way
-      until ReLite Home is validated as a working default replacement.
+      Confirmed via `cmd package resolve-activity` as the actual current
+      default launcher on this device (SearchLauncherQuickStep variant,
+      package com.android.launcher3). Do not disable any launcher,
+      including the OEM default, until ReLite Home is set as default and
+      confirmed working end-to-end.
