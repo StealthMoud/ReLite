@@ -36,6 +36,16 @@ jobs:
           [yaml.safe_load(p.read_text()) for p in pathlib.Path('profiles').glob('*.yaml')];
           print('profiles/*.yaml parse OK')"
 
+      - name: Check generated package docs are up to date
+        run: |
+          for device_dir in devices/*/*/; do
+            generated="$device_dir/PACKAGES.md"
+            if [ -f "$generated" ]; then
+              diff <(python scripts/generate_package_docs.py "$device_dir") "$generated" \
+                || { echo "::error::$generated is stale — regenerate with scripts/generate_package_docs.py"; exit 1; }
+            fi
+          done
+
       - name: Secret / identifier scan of committed fixtures
         run: |
           python - <<'PY'
