@@ -58,7 +58,14 @@ tool:
 3. **Standard Android Recovery** (`adb reboot recovery`) — provides
    "Wipe data/factory reset" as a last resort (see `docs/recovery.md`
    section 6). This is a normal, OEM-supported recovery boot mode, not a
-   custom recovery, and does not require an unlocked bootloader.
+   custom recovery, and does not require an unlocked bootloader. **Not
+   exercised in this research pass** — entering it was judged
+   unnecessary risk for a state ReLite itself never modified, and stock
+   recovery on this device typically doesn't expose `adb shell`/
+   `screencap` for visual confirmation the way the bootloader/fastbootd
+   round-trips in `research/bootloader.md` did. Documented here as a
+   known-available mechanism per general Android/OEM behavior, not as
+   something confirmed working on this specific unit.
 
 ## What would be needed before any unlock/flash work
 
