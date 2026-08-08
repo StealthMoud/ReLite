@@ -1,0 +1,21 @@
+# ReLite "safe" profile.
+#
+# Per-package actions come from each device's packages.yaml `action.safe`
+# field (relite/classifier.py); this file documents profile-wide intent
+# and the settings relite/tuning.py applies for this profile.
+
+name: safe
+description: >
+  Remove only high-confidence advertising/promotional components and
+  high-confidence optional analytics. Preserve OEM conveniences. This is
+  the default, most conservative profile and the recommended starting
+  point for every device.
+
+animation_scale: "0.5"
+
+package_policy:
+  removes: [high-confidence-ads, high-confidence-analytics]
+  preserves: [oem-conveniences, duplicate-oem-apps, optional-cloud-theme-game]
+
+ram_expansion: unchanged
+network_adblock: disabled-by-default

@@ -1,0 +1,19 @@
+# ReLite "maximum" profile — lowest practical overhead while remaining a
+# normal, usable smartphone. Still obeys protected-package rules; nothing
+# here can override devices/<oem>/<model>/protected-packages.yaml.
+
+name: maximum
+description: >
+  Retain phone/SMS/network/camera/biometrics and all Android security
+  infrastructure. Retain Play services if the device/user relies on them.
+  Remove nearly every nonessential OEM component that has passed
+  validation. Disable animations entirely.
+
+animation_scale: "0"
+
+package_policy:
+  removes: [high-confidence-ads, high-confidence-analytics, optional-oem-services, duplicate-oem-apps, optional-cloud-theme-game]
+  preserves: [telephony, network, camera, biometrics, security-infrastructure, play-services-if-in-use]
+
+ram_expansion: disable-if-validated-beneficial
+network_adblock: disabled-by-default
