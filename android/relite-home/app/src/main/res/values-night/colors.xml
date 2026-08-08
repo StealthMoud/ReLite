@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="relite_background">#121314</color>
+    <color name="relite_surface">#1E2022</color>
+    <color name="relite_primary">#6FC7B6</color>
+    <color name="relite_on_primary">#00352C</color>
+    <color name="relite_text_primary">#F2F3F4</color>
+    <color name="relite_text_secondary">#A9AFB4</color>
+    <color name="relite_dock_background">#232527</color>
+
+    <color name="page_indicator_active">#6FC7B6</color>
+    <color name="page_indicator_inactive">#3A3D40</color>
+</resources>

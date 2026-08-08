@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Original ReLite palette — not a Samsung/One UI color copy. -->
+    <color name="relite_background">#F5F6F8</color>
+    <color name="relite_surface">#FFFFFF</color>
+    <color name="relite_primary">#2E6F63</color>
+    <color name="relite_on_primary">#FFFFFF</color>
+    <color name="relite_text_primary">#1B1C1E</color>
+    <color name="relite_text_secondary">#6B7076</color>
+    <color name="relite_dock_background">#E8EAED</color>
+
+    <color name="page_indicator_active">#2E6F63</color>
+    <color name="page_indicator_inactive">#C7CBCF</color>
+</resources>
