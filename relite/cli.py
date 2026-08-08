@@ -25,6 +25,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from relite import __version__
 from relite.actions import PlannedAction, apply_plan, build_plan
 from relite.adb import AdbClient, AdbUnavailableError
 from relite.classifier import ClassificationDatabase, load_database
@@ -95,6 +96,7 @@ def _render_changes(actions: list[PlannedAction]) -> None:
 
 
 @click.group()
+@click.version_option(version=__version__, prog_name="relite")
 @click.option(
     "--serial", default=None, help="Target a specific ADB serial when multiple devices are attached."
 )
