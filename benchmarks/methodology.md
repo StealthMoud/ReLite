@@ -50,6 +50,27 @@ starts as real, accurate data (the platform's own measurement of "no
 start work happened"), not as a failed sample — but be aware it does not
 capture the perceived UI transition time a user would actually see.
 
+### A note on PSS settle time
+
+Real-device testing (RMX5303, 2026-08-08, comparing ReLite Home to the
+stock launcher) found that `dumpsys meminfo`'s `TOTAL PSS` right after a
+cold start (`am start -W` returning) is not representative of steady
+-state memory use — it includes freshly-touched-but-soon-reclaimed pages
+from class loading, resource decoding, and JIT compilation. On this
+device, a single continuous process measured repeatedly without
+restarting showed PSS drop from ~229 MB to ~80 MB between 5s and 15s
+post-launch, then stay flat through 60s. A batch of automated
+force-stop-then-restart cycles, by contrast, produced a *misleadingly
+consistent* ~229 MB across 5 runs — restarting the process resets the
+decay clock every time, so "5 runs of a 15s-post-start reading" is not
+the same measurement as "5 runs of a properly-settled reading." **Always
+verify the settle point with a decay curve (measure the same running
+instance at several increasing intervals) before trusting a fixed
+-delay, multi-restart batch** — don't assume any particular number of
+seconds is "enough" without checking on the actual device. This
+methodology's PSS comparisons use a 45s settle time, confirmed flat via
+a decay curve first.
+
 ## Running a comparison
 
 ```bash

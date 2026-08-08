@@ -72,12 +72,18 @@ benchmark_targets:
     activity: .Camera
 
 pss_targets:
+  # launcher/relite_home include an activity: measured with a full
+  # force-stop + cold-start + 45s settle cycle for a fair comparison
+  # (see benchmarks/methodology.md's PSS settle-time note). systemui is
+  # measured ambient (no activity) since it should never be force-stopped.
   - label: launcher
     package: com.android.launcher3
+    activity: com.android.launcher3.uioverrides.QuickstepLauncher
   - label: systemui
     package: com.android.systemui
   - label: relite_home
     package: io.relite.home
+    activity: .ui.MainActivity
 
 support_status: validated-against-real-device
 bootloader_investigated: false

@@ -90,10 +90,42 @@ _TOTAL_PSS_RE = re.compile(r"TOTAL(?:\s+PSS)?:\s*(\d+)")
 
 
 def measure_pss(client: AdbClient, package: str) -> int | None:
-    """Total PSS (kB) for `package` via `dumpsys meminfo`, or None if not running."""
+    """Total PSS (kB) for `package` via `dumpsys meminfo`, or None if not running.
+
+    Measures whatever state the process is already in — appropriate for
+    always-on components (e.g. SystemUI) that shouldn't be restarted.
+    For a fair cold-start comparison between two apps (e.g. a launcher),
+    use `measure_pss_settled` instead.
+    """
     output = client.shell(f"dumpsys meminfo {package}").stdout
     match = _TOTAL_PSS_RE.search(output)
     return int(match.group(1)) if match else None
+
+
+# Real-device finding (RMX5303, 2026-08-08): PSS measured immediately
+# after `am start -W` returns is not representative of steady-state
+# memory use — it includes freshly-touched-but-soon-reclaimed pages from
+# class loading and resource decoding. A continuous process measured
+# repeatedly without restarting showed PSS drop by roughly two-thirds
+# between 5s and 15s post-launch, then stay flat through 60s. See
+# benchmarks/methodology.md for the full decay-curve writeup.
+DEFAULT_SETTLE_SECONDS = 45
+
+
+def measure_pss_settled(
+    client: AdbClient,
+    package: str,
+    activity: str,
+    settle_seconds: float = DEFAULT_SETTLE_SECONDS,
+) -> int | None:
+    """Force-stop, cold-start, wait for the process to settle, then measure
+    PSS — the fair, comparable methodology for benchmarking one app against
+    another (e.g. ReLite Home vs. the stock launcher)."""
+    client.shell(f"am force-stop {package}")
+    time.sleep(1)
+    client.shell(f"am start -W {package}/{activity}")
+    time.sleep(settle_seconds)
+    return measure_pss(client, package)
 
 
 def measure_app_start(
@@ -171,7 +203,10 @@ def run_benchmark(
         )
 
     for target in pss_targets or []:
-        pss = measure_pss(client, target["package"])
+        if "activity" in target:
+            pss = measure_pss_settled(client, target["package"], target["activity"])
+        else:
+            pss = measure_pss(client, target["package"])
         if pss is not None:
             result.pss_kb[target["label"]] = pss
 
