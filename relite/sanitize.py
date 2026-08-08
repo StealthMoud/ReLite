@@ -38,10 +38,14 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("imsi", re.compile(r"\b\d{14,15}\b")),
     ("mac_or_bt", re.compile(r"\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b")),
     ("email", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
-    ("phone_number", re.compile(r"\+?\d[\d\-\s]{8,14}\d")),
+    # Requires >=10 actual digit characters so ISO dates like 2026-08-08
+    # (8 digits) don't false-positive; real phone numbers run 10-15 digits.
+    ("phone_number", re.compile(r"(?<!\d)\+?(?:\d[\s-]?){10,15}(?!\d)")),
     (
         "bearer_token",
-        re.compile(r"\b(?:[A-Za-z0-9]{20,}|ya29\.[\w\-.]+|AIza[\w\-]{35})\b"),
+        re.compile(
+            r"\b(?:(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{20,}|ya29\.[\w\-.]+|AIza[\w\-]{35})\b"
+        ),
     ),
     ("android_id_hex", re.compile(r"\b[0-9a-fA-F]{16}\b")),
     ("home_path", re.compile(r"/(Users|home)/[^/\s]+")),

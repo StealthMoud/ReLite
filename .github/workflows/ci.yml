@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# CI never touches a real Android device — every job runs against mocked
+# adb fixtures (Python) or the JVM/Android SDK toolchain only (Kotlin).
+jobs:
+  python:
+    name: Python (lint, types, tests, secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install relite (editable, dev extras)
+        run: pip install -e ".[dev]"
+
+      - name: ruff
+        run: ruff check relite tests
+
+      - name: mypy
+        run: mypy relite
+
+      - name: pytest
+        run: pytest -v
+
+      - name: Validate profile schemas
+        run: python -c "
+          import yaml, pathlib;
+          [yaml.safe_load(p.read_text()) for p in pathlib.Path('profiles').glob('*.yaml')];
+          print('profiles/*.yaml parse OK')"
+
+      - name: Secret / identifier scan of committed fixtures
+        run: |
+          python - <<'PY'
+          import pathlib
+          import sys
+
+          from relite.sanitize import find_leaks
+
+          # Directories most likely to accumulate real device output over time.
+          scan_dirs = ["devices", "research", "benchmarks/results", "tests/fixtures", "docs"]
+          text_suffixes = {".md", ".yaml", ".yml", ".json", ".txt"}
+
+          leaked = False
+          for scan_dir in scan_dirs:
+              for path in pathlib.Path(scan_dir).rglob("*"):
+                  if not path.is_file() or path.suffix not in text_suffixes:
+                      continue
+                  hits = find_leaks(path.read_text(errors="ignore"))
+                  if hits:
+                      leaked = True
+                      print(f"::error file={path}::possible identifying data: {hits}")
+
+          if leaked:
+              sys.exit(1)
+          print("no identifying-data patterns found in committed fixtures")
+          PY
+
+  android:
+    name: ReLite Home (Gradle build + unit tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android/relite-home
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission to gradlew
+        run: chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --console=plain
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --console=plain
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck scripts/*.sh benchmarks/scripts/*.sh
