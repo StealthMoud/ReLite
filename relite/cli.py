@@ -7,6 +7,7 @@
     relite analyze
     relite plan --profile safe
     relite apply --profile safe
+    relite status
     relite restore --snapshot stock
     relite tune ram-expansion off
     relite benchmark --label stock
@@ -24,20 +25,30 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from relite.actions import apply_plan, build_plan
+from relite.actions import PlannedAction, apply_plan, build_plan
 from relite.adb import AdbClient, AdbUnavailableError
-from relite.classifier import load_database
-from relite.device import probe_device
+from relite.classifier import ClassificationDatabase, load_database
+from relite.device import DeviceProfile, probe_device
 from relite.packages import list_packages
 from relite.report import write_report
 from relite.restore import restore_from_journal, restore_from_snapshot
 from relite.snapshot import Snapshot, default_snapshot_dir, take_snapshot
+from relite.state import check_profile_integrity, load_state, record_profile_applied, record_snapshot_restored
 from relite.tuning import apply_animation_profile, probe_ram_expansion, set_private_dns
 
 console = Console()
 
 DEVICES_ROOT = Path("devices")
 JOURNAL_PATH = Path(".local") / "actions.jsonl"
+STATE_PATH = Path(".local") / "state.json"
+
+# How each profile is described to the user — never "safe"/"aggressive"
+# as a value judgement on the others, just what it is relative to them.
+PROFILE_LABELS = {
+    "safe": "conservative",
+    "performance": "recommended",
+    "maximum": "aggressive / experimental",
+}
 
 
 def _find_device_dir(model: str) -> Path | None:
@@ -46,6 +57,41 @@ def _find_device_dir(model: str) -> Path | None:
         if candidate.is_dir():
             return candidate
     return None
+
+
+def _render_header(device_profile: DeviceProfile, profile_name: str) -> None:
+    label = PROFILE_LABELS.get(profile_name, profile_name)
+    snapshot_exists = default_snapshot_dir(device_profile.model).exists()
+    console.print(f"[bold]ReLite — {device_profile.model}[/bold]")
+    console.print()
+    console.print("Device:")
+    console.print(f"  {device_profile.model}  (Android {device_profile.android_version})")
+    console.print()
+    console.print("Profile:")
+    console.print(f"  {profile_name}  ({label})")
+    console.print()
+    console.print(f"Rollback available: {'yes' if snapshot_exists else 'no snapshot taken yet'}")
+    console.print(f"Snapshot on disk:   {'yes' if snapshot_exists else 'no'}")
+    console.print()
+
+
+def _render_changes(actions: list[PlannedAction]) -> None:
+    by_action: dict[str, list[PlannedAction]] = {"disable": [], "uninstall-user": []}
+    for item in actions:
+        by_action.setdefault(item.action, []).append(item)
+
+    console.print("Changes:")
+    if by_action["disable"]:
+        console.print(f"  Disable ({len(by_action['disable'])}):")
+        for item in by_action["disable"]:
+            console.print(f"    - {item.package}")
+    if by_action["uninstall-user"]:
+        console.print(f"  Uninstall for user 0, reversible ({len(by_action['uninstall-user'])}):")
+        for item in by_action["uninstall-user"]:
+            console.print(f"    - {item.package}")
+    if not actions:
+        console.print("  (none — device already matches this profile)")
+    console.print()
 
 
 @click.group()
@@ -186,14 +232,16 @@ def plan(ctx: click.Context, profile_name: str) -> None:
     installed = list_packages(client)
     actions = build_plan(installed, db, profile_name)  # type: ignore[arg-type]
 
-    table = Table(title=f"Plan: {profile_name}")
+    _render_header(device_profile, profile_name)
+    _render_changes(actions)
+
+    table = Table(title="Reasons")
     table.add_column("Package")
     table.add_column("Action")
     table.add_column("Reason")
     for item in actions:
         table.add_row(item.package, item.action, item.reason)
     console.print(table)
-    console.print(f"{len(actions)} package(s) would be changed.")
 
 
 @main.command()
@@ -214,14 +262,26 @@ def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
     installed = list_packages(client)
     actions = build_plan(installed, db, profile_name)  # type: ignore[arg-type]
 
-    console.print(f"Applying {len(actions)} package action(s) [{'dry-run' if dry_run else 'live'}]...")
+    _render_header(device_profile, profile_name)
+    _render_changes(actions)
+    console.print(f"Protected packages: verified ({len(db.protected)} entries loaded)")
+    console.print()
+
+    console.print(f"Applying [{'dry-run' if dry_run else 'live'}]...")
     records = apply_plan(client, actions, JOURNAL_PATH, dry_run=dry_run)
     ok = sum(1 for r in records if r.result == "ok" or (dry_run and r.result == "dry-run"))
+    failed = [r for r in records if r.result not in ("ok", "dry-run")]
     console.print(f"[green]{ok}/{len(records)} package action(s) applied[/green]")
+    if failed:
+        console.print(f"[yellow]{len(failed)} action(s) did not take effect (platform refused):[/yellow]")
+        for r in failed:
+            console.print(f"  - {r.package}: {r.result}")
 
     if not dry_run:
         apply_animation_profile(client, profile_name)
         console.print("Animation scale applied.")
+        record_profile_applied(STATE_PATH, profile_name)
+        console.print(f"Active profile recorded: {profile_name}")
 
 
 @main.command()
@@ -239,12 +299,15 @@ def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dr
 
     if snapshot_name or restore_all:
         device_profile = probe_device(client, serial)
-        snap_path = default_snapshot_dir(device_profile.model) / f"{snapshot_name or 'stock'}.snapshot.json"
+        snap_name = snapshot_name or "stock"
+        snap_path = default_snapshot_dir(device_profile.model) / f"{snap_name}.snapshot.json"
         if not snap_path.exists():
             console.print(f"[red]Snapshot not found: {snap_path}[/red]")
             sys.exit(1)
         snap = Snapshot.load(snap_path)
         result = restore_from_snapshot(client, snap, dry_run=dry_run)
+        if not dry_run:
+            record_snapshot_restored(STATE_PATH, snap_name)
     else:
         result = restore_from_journal(client, JOURNAL_PATH, dry_run=dry_run)
 
@@ -257,6 +320,58 @@ def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dr
     if restore_all and not dry_run:
         set_private_dns(client, None)
         console.print("Private DNS ad-block disabled.")
+
+
+@main.command()
+@click.pass_context
+def status(ctx: click.Context) -> None:
+    """Show the active profile and verify the device's live package state
+    actually matches what that profile should have produced."""
+    client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    device_dir = _find_device_dir(device_profile.model)
+    state = load_state(STATE_PATH)
+    snapshot_exists = default_snapshot_dir(device_profile.model).exists()
+
+    console.print(f"[bold]ReLite status — {device_profile.model}[/bold]")
+    console.print()
+    console.print("Active profile:")
+    if state.active_profile:
+        label = PROFILE_LABELS.get(state.active_profile, state.active_profile)
+        console.print(f"  {state.active_profile}  ({label})  (applied {state.applied_at})")
+    else:
+        console.print("  none recorded — stock, or restored via 'relite restore' since the last apply")
+    console.print()
+
+    if device_dir is None:
+        console.print(f"[yellow]No device profile for '{device_profile.model}'; "
+                       "cannot verify integrity.[/yellow]")
+        return
+
+    db: ClassificationDatabase = load_database(device_dir)
+    installed = list_packages(client)
+
+    if state.active_profile:
+        report = check_profile_integrity(installed, db, state.active_profile)  # type: ignore[arg-type]
+        console.print("Profile integrity:")
+        color = "green" if report.status == "PASS" else "red"
+        console.print(f"  [{color}]{report.status}[/{color}]")
+        console.print(f"  Packages checked:  {report.total_checked}")
+        console.print(f"  Currently disabled (of checked): {report.disabled_count}")
+        if report.mismatches:
+            console.print(f"  Mismatches ({len(report.mismatches)}):")
+            for m in report.mismatches:
+                console.print(f"    - {m.package}: expected {m.expected}, observed {m.observed}")
+        if report.known_limitations:
+            console.print(f"  Known platform limitations ({len(report.known_limitations)}, not failures):")
+            for lim in report.known_limitations:
+                console.print(f"    - {lim.package}: {lim.reason}")
+        console.print()
+
+    console.print("Rollback:")
+    console.print(f"  Snapshot on disk: {'yes' if snapshot_exists else 'no'}")
+    console.print(f"  Last snapshot restored: {state.last_snapshot or 'none'}")
+    console.print(f"  Action journal: {'present' if JOURNAL_PATH.exists() else 'empty'}")
 
 
 @main.command()
