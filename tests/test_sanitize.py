@@ -39,3 +39,28 @@ def test_sanitize_dict_recurses_and_redacts():
 def test_find_leaks_detects_unredacted_identifiers():
     assert "email" in find_leaks("contact: someone@example.com")
     assert find_leaks("nothing sensitive here") == []
+
+
+def test_find_leaks_does_not_flag_build_timestamps_or_dates():
+    """Real-device finding (RMX5303, 2026-08-08): a firmware build
+    fingerprint's embedded Unix-timestamp component and plain ISO dates
+    were false-positiving as phone numbers."""
+    assert find_leaks("V.R4T2.1776089958") == []
+    assert find_leaks("security patch 2026-04-01 is recent") == []
+
+
+def test_find_leaks_still_detects_formatted_phone_numbers():
+    assert "phone_number" in find_leaks("call me at 555-123-4567")
+    assert "phone_number" in find_leaks("+1 555 123 4567")
+
+
+def test_find_leaks_does_not_flag_package_paths_containing_home():
+    """Real-device finding: `io/relite/home/util/IconCache.kt` contains
+    the substring "/home/util", which used to false-positive as a
+    contributor's OS home directory path."""
+    assert find_leaks("android/relite-home/app/src/main/java/io/relite/home/util/IconCache.kt") == []
+
+
+def test_find_leaks_still_detects_real_home_directory_paths():
+    assert "home_path" in find_leaks("see /Users/johndoe/project/file.py for details")
+    assert "home_path" in find_leaks("path is '/home/alice/data'")

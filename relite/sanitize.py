@@ -38,9 +38,18 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("imsi", re.compile(r"\b\d{14,15}\b")),
     ("mac_or_bt", re.compile(r"\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b")),
     ("email", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
-    # Requires >=10 actual digit characters so ISO dates like 2026-08-08
-    # (8 digits) don't false-positive; real phone numbers run 10-15 digits.
-    ("phone_number", re.compile(r"(?<!\d)\+?(?:\d[\s-]?){10,15}(?!\d)")),
+    # Requires actual group separators (space/dash) between digit runs, so
+    # unformatted 10+ digit blobs — build timestamps embedded in a
+    # firmware fingerprint, version codes, etc. — don't false-positive.
+    # Real phone numbers are essentially never written as one unbroken
+    # digit string in documentation/logs; when they are, IMEI/IMSI-length
+    # bare digit runs are already covered by those patterns above.
+    (
+        "phone_number",
+        re.compile(
+            r"(?<!\d)(?!\d{4}-\d{2}-\d{2}(?!\d))(?:\+\d{1,3}[\s-])?(?:\d{2,4}[\s-]){2,4}\d{2,4}(?!\d)"
+        ),
+    ),
     (
         "bearer_token",
         re.compile(
@@ -48,7 +57,11 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
     ("android_id_hex", re.compile(r"\b[0-9a-fA-F]{16}\b")),
-    ("home_path", re.compile(r"/(Users|home)/[^/\s]+")),
+    # Only match when /Users/ or /home/ starts a path token (preceded by
+    # whitespace, a quote, or start of string) — otherwise this false
+    # -positives on package/import paths that merely contain "home" as a
+    # path segment, e.g. `io/relite/home/util/IconCache.kt`.
+    ("home_path", re.compile(r"(?:^|(?<=[\s\"'`]))/(Users|home)/[^/\s]+")),
     ("ssid_quoted", re.compile(r'SSID:\s*"[^"]*"')),
 ]
 
