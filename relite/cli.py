@@ -306,19 +306,41 @@ def network_adblock(ctx: click.Context, hostname: str | None, disable_flag: bool
 
 @main.command()
 @click.option("--label", required=True, help="Label for this benchmark run, e.g. 'stock' or 'safe'.")
+@click.option("--runs", default=5, show_default=True, help="Iterations per app start measurement.")
+@click.option("--skip-apps", is_flag=True, default=False, help="Skip app start/PSS measurements.")
 @click.pass_context
-def benchmark(ctx: click.Context, label: str) -> None:
-    """Run the benchmark harness and store a labeled result."""
+def benchmark(ctx: click.Context, label: str, runs: int, skip_apps: bool) -> None:
+    """Run the benchmark harness and store a labeled result.
+
+    App start/PSS targets come from the device's device.yaml
+    (`benchmark_targets` / `pss_targets`) — see docs/development.md.
+    """
+    import json as _json
+
+    import yaml
+
     from relite.benchmark import run_benchmark
 
     client, serial = _connected_client(ctx)
     device_profile = probe_device(client, serial)
-    result = run_benchmark(client, label)
+    device_dir = _find_device_dir(device_profile.model)
+
+    app_targets: list[dict[str, str]] = []
+    pss_targets: list[dict[str, str]] = []
+    if device_dir and not skip_apps:
+        device_yaml_path = device_dir / "device.yaml"
+        if device_yaml_path.exists():
+            device_yaml = yaml.safe_load(device_yaml_path.read_text()) or {}
+            app_targets = device_yaml.get("benchmark_targets", [])
+            pss_targets = device_yaml.get("pss_targets", [])
+
+    console.print(f"Running benchmark '{label}' ({len(app_targets)} app target(s), "
+                  f"{len(pss_targets)} PSS target(s), {runs} run(s) each)...")
+    result = run_benchmark(client, label, app_targets=app_targets, pss_targets=pss_targets, runs=runs)
 
     out_dir = Path("benchmarks/results") / device_profile.model
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{label}.json"
-    import json as _json
     out_path.write_text(_json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n")
     console.print(f"[green]Benchmark '{label}' saved to {out_path}[/green]")
 
@@ -327,7 +349,7 @@ def benchmark(ctx: click.Context, label: str) -> None:
 @click.pass_context
 def report(ctx: click.Context) -> None:
     """Render a Markdown/JSON/CSV comparison report from all saved benchmark results."""
-    from relite.benchmark import BenchmarkResult
+    from relite.benchmark import BenchmarkResult, TimingStats
 
     client, serial = _connected_client(ctx)
     device_profile = probe_device(client, serial)
@@ -336,8 +358,16 @@ def report(ctx: click.Context) -> None:
         console.print(f"[yellow]No benchmark results found under {results_dir}[/yellow]")
         return
 
+    # Canonical profile progression so the report's baseline/comparison
+    # columns read left-to-right as stock -> safe -> performance ->
+    # maximum, not alphabetical (which would put "maximum" first).
+    label_order = {"stock": 0, "safe": 1, "performance": 2, "maximum": 3}
+
+    def sort_key(path: Path) -> tuple[int, str]:
+        return (label_order.get(path.stem, len(label_order)), path.stem)
+
     results = []
-    for path in sorted(results_dir.glob("*.json")):
+    for path in sorted(results_dir.glob("*.json"), key=sort_key):
         if path.name in ("latest.json",):
             continue
         import json as _json
@@ -349,6 +379,13 @@ def report(ctx: click.Context) -> None:
                 disabled_packages=data["disabled_packages"],
                 system_packages=data["system_packages"],
                 meminfo=data["meminfo"],
+                app_start_times={
+                    k: TimingStats(v["samples_ms"]) for k, v in data.get("app_start_times", {}).items()
+                },
+                app_warm_start_times={
+                    k: TimingStats(v["samples_ms"]) for k, v in data.get("app_warm_start_times", {}).items()
+                },
+                pss_kb=data.get("pss_kb", {}),
             )
         )
 

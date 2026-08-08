@@ -59,6 +59,8 @@ class BenchmarkResult:
     system_packages: int
     meminfo: dict[str, int]
     app_start_times: dict[str, TimingStats] = field(default_factory=dict)
+    app_warm_start_times: dict[str, TimingStats] = field(default_factory=dict)
+    pss_kb: dict[str, int] = field(default_factory=dict)
     boot_time: TimingStats | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -69,6 +71,8 @@ class BenchmarkResult:
             "system_packages": self.system_packages,
             "meminfo": self.meminfo,
             "app_start_times": {k: v.to_dict() for k, v in self.app_start_times.items()},
+            "app_warm_start_times": {k: v.to_dict() for k, v in self.app_warm_start_times.items()},
+            "pss_kb": self.pss_kb,
             "boot_time": self.boot_time.to_dict() if self.boot_time else None,
         }
 
@@ -80,6 +84,16 @@ _MEMINFO_LINE_RE = re.compile(r"^([\w()\s.]+?):\s*(\d+)\s*kB", re.MULTILINE)
 def measure_meminfo(client: AdbClient) -> dict[str, int]:
     output = client.shell("cat /proc/meminfo").stdout
     return {name.strip(): int(value) for name, value in _MEMINFO_LINE_RE.findall(output)}
+
+
+_TOTAL_PSS_RE = re.compile(r"TOTAL(?:\s+PSS)?:\s*(\d+)")
+
+
+def measure_pss(client: AdbClient, package: str) -> int | None:
+    """Total PSS (kB) for `package` via `dumpsys meminfo`, or None if not running."""
+    output = client.shell(f"dumpsys meminfo {package}").stdout
+    match = _TOTAL_PSS_RE.search(output)
+    return int(match.group(1)) if match else None
 
 
 def measure_app_start(
@@ -129,12 +143,36 @@ def measure_boot_time(client: AdbClient, poll_interval: float = 1.0, timeout: fl
     raise TimeoutError("device did not report sys.boot_completed within timeout")
 
 
-def run_benchmark(client: AdbClient, label: str) -> BenchmarkResult:
+def run_benchmark(
+    client: AdbClient,
+    label: str,
+    app_targets: list[dict[str, str]] | None = None,
+    pss_targets: list[dict[str, str]] | None = None,
+    runs: int = DEFAULT_RUNS,
+) -> BenchmarkResult:
+    """Full benchmark sweep: package counts, memory, and — if targets are
+    supplied (see devices/<model>/device.yaml `benchmark_targets` /
+    `pss_targets`) — app cold/warm start timing and per-package PSS."""
     packages = list_packages(client)
-    return BenchmarkResult(
+    result = BenchmarkResult(
         label=label,
         enabled_packages=sum(1 for p in packages if p.enabled and not p.disabled),
         disabled_packages=sum(1 for p in packages if p.disabled),
         system_packages=sum(1 for p in packages if p.system),
         meminfo=measure_meminfo(client),
     )
+
+    for target in app_targets or []:
+        result.app_start_times[target["label"]] = measure_app_start(
+            client, target["package"], target["activity"], runs=runs
+        )
+        result.app_warm_start_times[target["label"]] = measure_warm_start(
+            client, target["package"], target["activity"], runs=runs
+        )
+
+    for target in pss_targets or []:
+        pss = measure_pss(client, target["package"])
+        if pss is not None:
+            result.pss_kb[target["label"]] = pss
+
+    return result

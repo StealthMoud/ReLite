@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import asdict, is_dataclass
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -64,7 +63,24 @@ def render_markdown(device_model: str, firmware: str, results: list[BenchmarkRes
         after_val = results[-1].app_start_times.get(app_label)
         before = before_val.median if before_val else None
         after = after_val.median if after_val else None
-        lines.append(row(f"{app_label} start (median)", medians, before, after))
+        lines.append(row(f"{app_label} cold start (median)", medians, before, after))
+
+    all_warm_labels = sorted({name for r in results for name in r.app_warm_start_times})
+    for app_label in all_warm_labels:
+        warm = {r.label: r.app_warm_start_times.get(app_label) for r in results}
+        medians = [f"{stats.median:.0f} ms" if stats else "—" for stats in warm.values()]
+        before_val = results[0].app_warm_start_times.get(app_label)
+        after_val = results[-1].app_warm_start_times.get(app_label)
+        before = before_val.median if before_val else None
+        after = after_val.median if after_val else None
+        lines.append(row(f"{app_label} warm start (median)", medians, before, after))
+
+    all_pss_labels = sorted({name for r in results for name in r.pss_kb})
+    for pss_label in all_pss_labels:
+        values = [f"{r.pss_kb[pss_label]:,} kB" if pss_label in r.pss_kb else "—" for r in results]
+        before = results[0].pss_kb.get(pss_label)
+        after = results[-1].pss_kb.get(pss_label)
+        lines.append(row(f"{pss_label} PSS", values, before, after))
 
     lines.append("")
     lines.append(
@@ -72,12 +88,6 @@ def render_markdown(device_model: str, firmware: str, results: list[BenchmarkRes
         f"(baseline: `{baseline.label}`). See `benchmarks/methodology.md`._"
     )
     return "\n".join(lines) + "\n"
-
-
-def _to_plain(obj: Any) -> Any:
-    if is_dataclass(obj) and not isinstance(obj, type):
-        return asdict(obj)
-    return obj
 
 
 def render_json(results: list[BenchmarkResult]) -> str:
