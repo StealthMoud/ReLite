@@ -1,0 +1,38 @@
+### ReLite ###
+.local/
+*.snapshot.json
+actions.jsonl
+.env
+
+### Python ###
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+.coverage
+htmlcov/
+
+### Android / Gradle ###
+android/relite-home/.gradle/
+android/relite-home/build/
+android/relite-home/app/build/
+android/relite-home/local.properties
+android/relite-home/.idea/
+android/relite-home/*.iml
+android/relite-home/captures/
+android/relite-home/.cxx/
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### IDE ###
+.vscode/
+.idea/
