@@ -46,6 +46,22 @@ class PlannedAction:
             return ["shell", "cmd", "package", "install-existing", "--user", "0", self.package]
         raise ValueError(f"unknown action {self.action}")
 
+    def expected_output_substring(self) -> str | None:
+        """Substring `pm`/`cmd package` must print on genuine success.
+
+        Found via real-device testing (RMX5303, 2026-08-08): `pm
+        disable-user` can exit 0 while the platform silently refuses the
+        change, printing "new state: default" instead of "new state:
+        disabled-user" — some OEM builds protect specific packages from
+        user-level disable independently of ReLite's own protected-package
+        policy. Exit code alone is not sufficient evidence of success.
+        """
+        if self.action == "disable":
+            return "disabled-user"
+        if self.action == "uninstall-user":
+            return "Success"
+        return None
+
 
 @dataclass
 class ActionRecord:
@@ -118,7 +134,13 @@ def apply_plan(
                 result = "dry-run"
             else:
                 cmd_result = client.raw(*command)
-                result = "ok" if cmd_result.ok else f"error: {cmd_result.stderr.strip()}"
+                expected = item.expected_output_substring()
+                if not cmd_result.ok:
+                    result = f"error: {cmd_result.stderr.strip()}"
+                elif expected and expected not in cmd_result.stdout:
+                    result = f"error: platform refused change: {cmd_result.stdout.strip()}"
+                else:
+                    result = "ok"
             record = ActionRecord(
                 timestamp=datetime.now(UTC).isoformat(),
                 package=item.package,
