@@ -211,6 +211,65 @@ for buildability.
 verified against a legitimately-obtained stock firmware image for this
 exact model/region.
 
+## 2026-08-08 — v0.1.0 release prep: corrected final state, restore round-trip, status command
+
+**Corrected the device's resting state.** It had been left on `maximum`
+from the prior validation pass; `performance` is the recommended
+default. Attempting `relite apply --profile performance` directly from
+`maximum` did nothing useful for the packages `maximum` had uninstalled
+for user 0 (apply only tightens, never loosens) — see the two real bugs
+below, found in the process of getting this right.
+
+**Real bug #1 — `list_packages()` ignored per-user install state.**
+`pm list packages` (and `-e`/`-d`/`-s`/`-3`) without `--user 0` list a
+package as present/enabled even after `pm uninstall --user 0` removed it
+for the current user; `dumpsys package <pkg>` was the only command that
+showed the true `installed=false`. This corrupted `relite plan`/`relite
+apply`'s view of the device. Fixed: every `pm list packages` call in
+`relite/packages.py::list_packages()` now includes `--user 0`.
+
+**Real bug #2 — `restore_from_snapshot` never actually reinstalled
+uninstalled packages.** It tried `pm enable` first and only fell back to
+`cmd package install-existing --user 0` if that failed — but `pm enable`
+exits 0 unconditionally (it only flips the component-enabled flag), so
+the fallback never ran. A `relite restore --snapshot stock` after
+`maximum` reported "400 package(s) restored" while 4 of the 5
+uninstalled packages remained genuinely absent from user 0. Fixed:
+`install-existing` now always runs before `enable`, and the whole
+function first diffs against current state (via the now-fixed
+`list_packages`) so it only touches packages that actually need it —
+this also stopped ~400 redundant ADB round-trips per restore and a
+spurious `SecurityException: Cannot disable a protected package` on
+`com.google.android.devicelockcontroller`, an OS-protected package
+ReLite had never touched but the old code tried to `pm enable` anyway.
+
+**Verified full restore round-trip with both fixes in place:**
+
+```text
+performance (12 disabled) -> relite restore --snapshot stock (2 disabled,
+exact match to stock snapshot) -> relite apply --profile performance
+(12 disabled, byte-for-byte identical set to the original performance
+state) -> relite status: PASS
+```
+
+No crashes, boot completes throughout.
+
+**Added `relite status`** (`relite/state.py`): tracks the active profile
+in `.local/state.json` (recorded by `apply`/`restore`) and checks live
+package state against what that profile should produce. Surfaces
+`com.coloros.lockassistant`'s permanent platform refusal (see the
+2026-08-08 entry above) as a documented "known platform limitation"
+rather than a perpetual `FAIL` — added a `platform_limitation` field to
+the classification schema for this.
+
+**CLI UX**: `plan`/`apply` now print a header (device, profile label —
+conservative/recommended/aggressive-experimental — rollback/snapshot
+availability) and group changes by action before executing. Found and
+fixed a real rendering bug in the process: `rich`'s `Console.print`
+interprets bare `[text]` as a markup/style tag, which silently swallowed
+the profile label (`[recommended]` rendered as nothing) — switched to
+parentheses.
+
 ## Template for future entries
 
 ```markdown
