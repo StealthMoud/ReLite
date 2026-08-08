@@ -1,0 +1,22 @@
+# Non-package tuning knobs for RMX5303, applied by relite/tuning.py.
+#
+# Deliberately short. ReLite does not touch CPU governors, LMKD, zRAM,
+# background process limits, or kernel sysctls — see docs/safety.md.
+
+animation_scale:
+  safe: "0.5"
+  performance: "0.5"
+  maximum: "0"
+
+ram_expansion:
+  # No key confirmed yet — `relite tune ram-expansion probe` searches
+  # settings global/secure/system for the candidate keys in
+  # relite/tuning.py::RAM_EXPANSION_CANDIDATE_KEYS. Populate this once a
+  # real device confirms one, and mirror it in findings.md.
+  confirmed_key: null
+  confirmed_namespace: null
+  safe_to_disable: unconfirmed
+
+network_adblock:
+  # Never a default hostname — user must always pass --hostname explicitly.
+  default_hostname: null

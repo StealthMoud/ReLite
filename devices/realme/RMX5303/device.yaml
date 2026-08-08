@@ -1,0 +1,36 @@
+# Device identity for realme C71 (RMX5303).
+#
+# Values here describe the device *family*, not one specific unit's live
+# firmware. Always trust `relite device` output over this file for
+# anything firmware-version-specific (Android release, security patch,
+# build fingerprint) — those drift with OTA updates and must never be
+# hard-coded into tooling.
+
+model: RMX5303
+marketing_name: realme C71
+manufacturer: realme
+soc_family: UNISOC T7250 (UMS9230)
+physical_ram_gb: 6
+ram_expansion:
+  advertised_max_virtual_gb: 16
+  mechanism: OEM storage-backed swap-like extension (NOT physical RAM, NOT kernel zRAM)
+  status: unconfirmed-on-device
+  note: >
+    See findings.md for the actual settings keys observed (if any) once a
+    real device has been probed with `relite tune ram-expansion probe`.
+
+firmware:
+  detect_via: relite device
+  note: >
+    Never assume the Android version or security patch level from online
+    marketing listings. Always read ro.build.version.release,
+    ro.build.version.sdk, ro.build.version.security_patch, and
+    ro.build.fingerprint from the live device.
+
+architecture:
+  cpu_abi: unconfirmed-on-device
+  notes: expected arm64-v8a family per UMS9230 platform; confirm via ro.product.cpu.abilist
+
+support_status: research-and-tooling-ready
+bootloader_investigated: false
+gsi_investigated: false

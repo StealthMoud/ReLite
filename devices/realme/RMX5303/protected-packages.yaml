@@ -1,0 +1,104 @@
+# Hard safety floor for RMX5303. Packages here can NEVER be scheduled for
+# removal by any profile (safe/performance/maximum), regardless of what
+# packages.yaml says. See relite/classifier.py: ClassificationDatabase.decide()
+# checks this list before consulting the classification database at all.
+#
+# This is intentionally conservative and framework/AOSP-name based for the
+# categories the master plan (section 9) explicitly calls out as
+# boot/security/telephony-critical. Real device dumps may reveal additional
+# OEM-specific critical services (e.g. a realme-branded SystemUI companion
+# process) — add them here as they're identified in findings.md, not removed
+# from consideration by omission.
+
+protected:
+  # Core framework / UI shell
+  - package: android
+    reason: Android framework package itself.
+  - package: com.android.systemui
+    reason: SystemUI — status bar, notification shade, quick settings.
+  - package: com.android.settings
+    reason: Settings app.
+  - package: com.android.settings.intelligence
+    reason: Settings search/suggestions backend used by the Settings app itself.
+  - package: com.android.packageinstaller
+    reason: Package installation.
+  - package: com.google.android.packageinstaller
+    reason: Package installation (AOSP/GMS variant).
+  - package: com.android.permissioncontroller
+    reason: Runtime permission grant UI and enforcement.
+  - package: com.google.android.permissioncontroller
+    reason: Runtime permission grant UI and enforcement (GMS variant).
+
+  # Security / keystore
+  - package: com.android.keychain
+    reason: System keychain/keystore UI.
+
+  # Telephony / IMS / emergency
+  - package: com.android.phone
+    reason: Telephony stack — calls, emergency calling.
+  - package: com.android.server.telecom
+    reason: Telecom/call routing framework.
+  - package: com.android.ims
+    reason: IMS (VoLTE/VoWiFi) stack.
+  - package: com.android.carrierconfig
+    reason: Carrier configuration required for correct radio/APN behavior.
+  - package: com.android.stk
+    reason: SIM toolkit.
+  - package: com.android.providers.telephony
+    reason: SMS/MMS/APN content provider.
+
+  # Wi-Fi / Bluetooth / network
+  - package: com.android.wifi.resources
+    reason: Wi-Fi stack resources.
+  - package: com.android.bluetooth
+    reason: Bluetooth stack.
+  - package: com.android.networkstack
+    reason: Core network connectivity stack.
+  - package: com.android.captiveportallogin
+    reason: Captive portal detection required for Wi-Fi network validation.
+
+  # Biometrics / camera
+  - package: com.android.biometrics
+    reason: Fingerprint/biometric authentication framework.
+  - package: com.android.camera2
+    reason: Reference camera stack dependency (even if OEM camera app differs).
+
+  # Storage / media / providers
+  - package: com.android.providers.media
+    reason: Media provider — required by nearly all media-consuming apps.
+  - package: com.android.providers.downloads
+    reason: Downloads provider.
+  - package: com.android.providers.contacts
+    reason: Contacts provider — required for calls/SMS/contacts apps.
+  - package: com.android.documentsui
+    reason: DocumentsUI file picker/storage access framework UI.
+  - package: com.android.externalstorage
+    reason: External storage provider.
+  - package: com.android.mtp
+    reason: USB file transfer provider.
+
+  # WebView
+  - package: com.google.android.webview
+    reason: System WebView provider — no validated replacement configured.
+  - package: com.android.webview
+    reason: AOSP WebView provider fallback.
+
+  # Location
+  - package: com.android.location.fused
+    reason: Fused location provider backend.
+
+  # Update / recovery
+  - package: com.nearme.romupdate
+    reason: OTA/firmware update path (see packages.yaml — recorded there too).
+  - package: com.android.updater
+    reason: Generic AOSP-family updater surface, if present.
+
+  # Current launcher until ReLite Home is confirmed functional as default.
+  - package: com.android.launcher3
+    reason: Do not disable any launcher, including the OEM default, until ReLite Home is set as default and confirmed working end-to-end.
+  - package: com.oppo.launcher
+    reason: >
+      Candidate realme/ColorOS-family default launcher package name.
+      Confirm the actual package via `relite scan` on a real RMX5303 and
+      correct/extend this entry in findings.md — keep protected either way
+      until ReLite Home is validated as a working default replacement.

@@ -1,0 +1,169 @@
+# RMX5303 (realme C71) package classification database.
+#
+# IMPORTANT: this file is a *starting candidate set*, not a validated
+# on-device inventory. Per the master plan (section 8/10), ReLite must
+# discover the actual installed package set from the live device via
+# `relite scan` / `relite analyze` before removing anything — this file
+# alone does not authorize any action.
+#
+# Entries below are seeded from package names that are publicly and
+# consistently documented (by multiple independent community debloat
+# references, including Universal Android Debloater NG, used only as a
+# secondary signal per section 10) as realme/ColorOS-family promotional,
+# recommendation, or analytics components. Every entry is intentionally
+# capped at `confidence: medium` until it has been cross-checked against
+# an actual RMX5303 `pm list packages -f` + `dumpsys package` dump — see
+# findings.md for validation status. Nothing here is `confidence: high`
+# yet for that reason.
+#
+# Schema: see relite/classifier.py (PackageClassification / VALID_*).
+
+- package: com.heytap.market
+  category: [cloud, optional]
+  confidence: medium
+  action:
+    safe: keep
+    performance: disable
+    maximum: disable
+  risk: medium
+  reason: >
+    OEM app store (realme/heytap family). Disabling removes background
+    promotional activity but also disables that store as an install
+    source; keep in `safe`, only touch in `performance`/`maximum`.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.heytap.mcs
+  category: [analytics, cloud]
+  confidence: medium
+  action:
+    safe: keep
+    performance: disable
+    maximum: disable
+  risk: low
+  reason: OEM cloud push/messaging component used for promotional pushes.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.heytap.usercenter
+  category: [cloud, optional]
+  confidence: medium
+  action:
+    safe: keep
+    performance: disable
+    maximum: disable
+  risk: low
+  reason: OEM account/user-center app, optional unless the OEM account is used.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.assistantscreen
+  category: [recommendations, optional]
+  confidence: medium
+  action:
+    safe: disable
+    performance: disable
+    maximum: uninstall-user
+  risk: low
+  reason: >
+    "Smart/App Assist" home-adjacent feed screen historically used for
+    content recommendations on realme/ColorOS-family skins.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.karaoke
+  category: [optional, games]
+  confidence: medium
+  action:
+    safe: keep
+    performance: disable
+    maximum: uninstall-user
+  risk: low
+  reason: Bundled optional entertainment feature, unrelated to core telephony/UI.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.gamespaceui
+  category: [games, optional]
+  confidence: medium
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: Game mode overlay; kept by default since it can affect thermal/perf UX for gamers.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.oppo.quicksearchbox
+  category: [recommendations, browser]
+  confidence: medium
+  action:
+    safe: disable
+    performance: disable
+    maximum: uninstall-user
+  risk: low
+  reason: OEM search/recommendation overlay component, not the system search provider.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.nearme.romupdate
+  category: [update, critical]
+  confidence: high
+  action:
+    safe: keep
+    performance: keep
+    maximum: keep
+  risk: high
+  reason: >
+    Firmware/OTA update path. Removing OTA capability is out of scope for
+    a reversible optimization tool; also referenced in protected-packages.yaml.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.recommend
+  category: [recommendations, analytics]
+  confidence: medium
+  action:
+    safe: disable
+    performance: disable
+    maximum: uninstall-user
+  risk: low
+  reason: Named recommendation/content-suggestion service typical of this OEM family.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.oppo.market
+  category: [cloud, ads]
+  confidence: medium
+  action:
+    safe: disable
+    performance: disable
+    maximum: uninstall-user
+  risk: low
+  reason: Secondary OEM store/app-promotion surface distinct from com.heytap.market on some builds.
+  dependencies: []
+  rollback:
+    supported: true
+
+- package: com.coloros.translate.engine
+  category: [optional]
+  confidence: low
+  action:
+    safe: keep
+    performance: keep
+    maximum: disable
+  risk: low
+  reason: On-device translation engine; optional but low confidence on removal safety without validation.
+  dependencies: []
+  rollback:
+    supported: true
