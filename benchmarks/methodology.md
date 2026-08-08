@@ -37,6 +37,19 @@ reproduced and audited rather than taken on faith.
 | Boot | host-observed time to `sys.boot_completed=1` | polling `getprop` after a reboot |
 | Frame timing | `dumpsys gfxinfo` / framestats, where supported | manual/scripted, see below |
 
+### A note on "warm start" and `TotalTime: 0`
+
+Real-device testing (RMX5303, 2026-08-08) found that `measure_warm_start`'s
+approach — press `KEYCODE_HOME`, then `am start` the same activity again —
+frequently reports `TotalTime: 0` with `Warning: Activity not started,
+intent has been delivered to currently running top-most instance.` This
+is not a bug: for a `singleTask`-style root activity whose task is still
+resident, Android's own instrumentation genuinely does zero start work —
+it's a window-focus change, not an activity creation. Treat `0 ms` warm
+starts as real, accurate data (the platform's own measurement of "no
+start work happened"), not as a failed sample — but be aware it does not
+capture the perceived UI transition time a user would actually see.
+
 ## Running a comparison
 
 ```bash

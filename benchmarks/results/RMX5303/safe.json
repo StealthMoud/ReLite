@@ -1,0 +1,113 @@
+{
+  "app_start_times": {
+    "camera": {
+      "max_ms": 670.0,
+      "median_ms": 629.0,
+      "min_ms": 595.0,
+      "p95_ms": 670.0,
+      "samples_ms": [
+        670.0,
+        595.0,
+        638.0,
+        611.0,
+        629.0
+      ]
+    },
+    "settings": {
+      "max_ms": 1258.0,
+      "median_ms": 1170.0,
+      "min_ms": 1126.0,
+      "p95_ms": 1258.0,
+      "samples_ms": [
+        1234.0,
+        1170.0,
+        1142.0,
+        1126.0,
+        1258.0
+      ]
+    }
+  },
+  "app_warm_start_times": {
+    "camera": {
+      "max_ms": 99.0,
+      "median_ms": 90.0,
+      "min_ms": 74.0,
+      "p95_ms": 99.0,
+      "samples_ms": [
+        99.0,
+        74.0,
+        91.0,
+        79.0,
+        90.0
+      ]
+    },
+    "settings": {
+      "max_ms": 121.0,
+      "median_ms": 91.0,
+      "min_ms": 79.0,
+      "p95_ms": 121.0,
+      "samples_ms": [
+        121.0,
+        79.0,
+        98.0,
+        87.0,
+        91.0
+      ]
+    }
+  },
+  "boot_time": null,
+  "disabled_packages": 5,
+  "enabled_packages": 397,
+  "label": "safe",
+  "meminfo": {
+    "Active": 1937120,
+    "Active(anon)": 318300,
+    "Active(file)": 1618820,
+    "AnonHugePages": 0,
+    "AnonPages": 870088,
+    "Bounce": 0,
+    "Buffers": 2100,
+    "Cached": 5194572,
+    "CmaFree": 4404,
+    "CmaTotal": 49152,
+    "CommitLimit": 8922924,
+    "Committed_AS": 219313996,
+    "Dirty": 608,
+    "FileHugePages": 0,
+    "FilePmdMapped": 0,
+    "Inactive": 3954764,
+    "Inactive(anon)": 565836,
+    "Inactive(file)": 3388928,
+    "KReclaimable": 277704,
+    "KernelStack": 60608,
+    "Mapped": 1116456,
+    "MemAvailable": 5359204,
+    "MemFree": 284004,
+    "MemTotal": 7968356,
+    "Mlocked": 176528,
+    "NFS_Unstable": 0,
+    "PageTables": 113596,
+    "Percpu": 9792,
+    "SReclaimable": 200520,
+    "SUnreclaim": 246576,
+    "ShadowCallStack": 15164,
+    "Shmem": 16076,
+    "ShmemHugePages": 0,
+    "ShmemPmdMapped": 0,
+    "Slab": 447096,
+    "SwapCached": 14088,
+    "SwapFree": 3348608,
+    "SwapTotal": 4938748,
+    "Unevictable": 177852,
+    "VmallocChunk": 0,
+    "VmallocTotal": 259653632,
+    "VmallocUsed": 173408,
+    "Writeback": 0,
+    "WritebackTmp": 0
+  },
+  "pss_kb": {
+    "launcher": 152107,
+    "systemui": 249456
+  },
+  "system_packages": 301
+}

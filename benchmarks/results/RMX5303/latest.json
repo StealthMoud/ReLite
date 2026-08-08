@@ -1,0 +1,452 @@
+[
+  {
+    "app_start_times": {
+      "camera": {
+        "max_ms": 1121.0,
+        "median_ms": 724.0,
+        "min_ms": 693.0,
+        "p95_ms": 1121.0,
+        "samples_ms": [
+          1121.0,
+          698.0,
+          735.0,
+          693.0,
+          724.0
+        ]
+      },
+      "settings": {
+        "max_ms": 1360.0,
+        "median_ms": 1177.0,
+        "min_ms": 1153.0,
+        "p95_ms": 1360.0,
+        "samples_ms": [
+          1360.0,
+          1177.0,
+          1153.0,
+          1162.0,
+          1213.0
+        ]
+      }
+    },
+    "app_warm_start_times": {
+      "camera": {
+        "max_ms": 0.0,
+        "median_ms": 0.0,
+        "min_ms": 0.0,
+        "p95_ms": 0.0,
+        "samples_ms": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "settings": {
+        "max_ms": 0.0,
+        "median_ms": 0.0,
+        "min_ms": 0.0,
+        "p95_ms": 0.0,
+        "samples_ms": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "boot_time": null,
+    "disabled_packages": 2,
+    "enabled_packages": 400,
+    "label": "stock",
+    "meminfo": {
+      "Active": 2041584,
+      "Active(anon)": 344608,
+      "Active(file)": 1696976,
+      "AnonHugePages": 0,
+      "AnonPages": 901540,
+      "Bounce": 0,
+      "Buffers": 2132,
+      "Cached": 4728600,
+      "CmaFree": 15904,
+      "CmaTotal": 49152,
+      "CommitLimit": 8922924,
+      "Committed_AS": 219049244,
+      "Dirty": 252,
+      "FileHugePages": 0,
+      "FilePmdMapped": 0,
+      "Inactive": 3415208,
+      "Inactive(anon)": 572256,
+      "Inactive(file)": 2842952,
+      "KReclaimable": 248880,
+      "KernelStack": 59672,
+      "Mapped": 1099696,
+      "MemAvailable": 5176736,
+      "MemFree": 598180,
+      "MemTotal": 7968356,
+      "Mlocked": 176512,
+      "NFS_Unstable": 0,
+      "PageTables": 115180,
+      "Percpu": 9792,
+      "SReclaimable": 199880,
+      "SUnreclaim": 248820,
+      "ShadowCallStack": 14964,
+      "Shmem": 17744,
+      "ShmemHugePages": 0,
+      "ShmemPmdMapped": 0,
+      "Slab": 448700,
+      "SwapCached": 13876,
+      "SwapFree": 3106176,
+      "SwapTotal": 4938748,
+      "Unevictable": 177836,
+      "VmallocChunk": 0,
+      "VmallocTotal": 259653632,
+      "VmallocUsed": 172748,
+      "Writeback": 0,
+      "WritebackTmp": 0
+    },
+    "pss_kb": {
+      "launcher": 159536,
+      "systemui": 264348
+    },
+    "system_packages": 301
+  },
+  {
+    "app_start_times": {
+      "camera": {
+        "max_ms": 670.0,
+        "median_ms": 629.0,
+        "min_ms": 595.0,
+        "p95_ms": 670.0,
+        "samples_ms": [
+          670.0,
+          595.0,
+          638.0,
+          611.0,
+          629.0
+        ]
+      },
+      "settings": {
+        "max_ms": 1258.0,
+        "median_ms": 1170.0,
+        "min_ms": 1126.0,
+        "p95_ms": 1258.0,
+        "samples_ms": [
+          1234.0,
+          1170.0,
+          1142.0,
+          1126.0,
+          1258.0
+        ]
+      }
+    },
+    "app_warm_start_times": {
+      "camera": {
+        "max_ms": 99.0,
+        "median_ms": 90.0,
+        "min_ms": 74.0,
+        "p95_ms": 99.0,
+        "samples_ms": [
+          99.0,
+          74.0,
+          91.0,
+          79.0,
+          90.0
+        ]
+      },
+      "settings": {
+        "max_ms": 121.0,
+        "median_ms": 91.0,
+        "min_ms": 79.0,
+        "p95_ms": 121.0,
+        "samples_ms": [
+          121.0,
+          79.0,
+          98.0,
+          87.0,
+          91.0
+        ]
+      }
+    },
+    "boot_time": null,
+    "disabled_packages": 5,
+    "enabled_packages": 397,
+    "label": "safe",
+    "meminfo": {
+      "Active": 1937120,
+      "Active(anon)": 318300,
+      "Active(file)": 1618820,
+      "AnonHugePages": 0,
+      "AnonPages": 870088,
+      "Bounce": 0,
+      "Buffers": 2100,
+      "Cached": 5194572,
+      "CmaFree": 4404,
+      "CmaTotal": 49152,
+      "CommitLimit": 8922924,
+      "Committed_AS": 219313996,
+      "Dirty": 608,
+      "FileHugePages": 0,
+      "FilePmdMapped": 0,
+      "Inactive": 3954764,
+      "Inactive(anon)": 565836,
+      "Inactive(file)": 3388928,
+      "KReclaimable": 277704,
+      "KernelStack": 60608,
+      "Mapped": 1116456,
+      "MemAvailable": 5359204,
+      "MemFree": 284004,
+      "MemTotal": 7968356,
+      "Mlocked": 176528,
+      "NFS_Unstable": 0,
+      "PageTables": 113596,
+      "Percpu": 9792,
+      "SReclaimable": 200520,
+      "SUnreclaim": 246576,
+      "ShadowCallStack": 15164,
+      "Shmem": 16076,
+      "ShmemHugePages": 0,
+      "ShmemPmdMapped": 0,
+      "Slab": 447096,
+      "SwapCached": 14088,
+      "SwapFree": 3348608,
+      "SwapTotal": 4938748,
+      "Unevictable": 177852,
+      "VmallocChunk": 0,
+      "VmallocTotal": 259653632,
+      "VmallocUsed": 173408,
+      "Writeback": 0,
+      "WritebackTmp": 0
+    },
+    "pss_kb": {
+      "launcher": 152107,
+      "systemui": 249456
+    },
+    "system_packages": 301
+  },
+  {
+    "app_start_times": {
+      "camera": {
+        "max_ms": 627.0,
+        "median_ms": 612.0,
+        "min_ms": 597.0,
+        "p95_ms": 627.0,
+        "samples_ms": [
+          612.0,
+          608.0,
+          627.0,
+          612.0,
+          597.0
+        ]
+      },
+      "settings": {
+        "max_ms": 739.0,
+        "median_ms": 544.0,
+        "min_ms": 538.0,
+        "p95_ms": 739.0,
+        "samples_ms": [
+          739.0,
+          544.0,
+          545.0,
+          544.0,
+          538.0
+        ]
+      }
+    },
+    "app_warm_start_times": {
+      "camera": {
+        "max_ms": 119.0,
+        "median_ms": 82.0,
+        "min_ms": 74.0,
+        "p95_ms": 119.0,
+        "samples_ms": [
+          74.0,
+          89.0,
+          119.0,
+          75.0
+        ]
+      },
+      "settings": {
+        "max_ms": 115.0,
+        "median_ms": 91.0,
+        "min_ms": 83.0,
+        "p95_ms": 115.0,
+        "samples_ms": [
+          115.0,
+          84.0,
+          83.0,
+          91.0,
+          93.0
+        ]
+      }
+    },
+    "boot_time": null,
+    "disabled_packages": 12,
+    "enabled_packages": 390,
+    "label": "performance",
+    "meminfo": {
+      "Active": 1849396,
+      "Active(anon)": 321060,
+      "Active(file)": 1528336,
+      "AnonHugePages": 0,
+      "AnonPages": 979588,
+      "Bounce": 0,
+      "Buffers": 2180,
+      "Cached": 4777032,
+      "CmaFree": 15692,
+      "CmaTotal": 49152,
+      "CommitLimit": 8922924,
+      "Committed_AS": 216634396,
+      "Dirty": 28,
+      "FileHugePages": 0,
+      "FilePmdMapped": 0,
+      "Inactive": 3735004,
+      "Inactive(anon)": 674196,
+      "Inactive(file)": 3060808,
+      "KReclaimable": 498320,
+      "KernelStack": 60384,
+      "Mapped": 1123732,
+      "MemAvailable": 5252636,
+      "MemFree": 375424,
+      "MemTotal": 7968356,
+      "Mlocked": 176528,
+      "NFS_Unstable": 0,
+      "PageTables": 112940,
+      "Percpu": 9792,
+      "SReclaimable": 196964,
+      "SUnreclaim": 246168,
+      "ShadowCallStack": 15120,
+      "Shmem": 18288,
+      "ShmemHugePages": 0,
+      "ShmemPmdMapped": 0,
+      "Slab": 443132,
+      "SwapCached": 14876,
+      "SwapFree": 3440512,
+      "SwapTotal": 4938748,
+      "Unevictable": 177852,
+      "VmallocChunk": 0,
+      "VmallocTotal": 259653632,
+      "VmallocUsed": 174376,
+      "Writeback": 0,
+      "WritebackTmp": 0
+    },
+    "pss_kb": {
+      "launcher": 173798,
+      "systemui": 250630
+    },
+    "system_packages": 301
+  },
+  {
+    "app_start_times": {
+      "camera": {
+        "max_ms": 607.0,
+        "median_ms": 596.0,
+        "min_ms": 593.0,
+        "p95_ms": 607.0,
+        "samples_ms": [
+          607.0,
+          593.0,
+          599.0,
+          595.0,
+          596.0
+        ]
+      },
+      "settings": {
+        "max_ms": 756.0,
+        "median_ms": 583.0,
+        "min_ms": 539.0,
+        "p95_ms": 756.0,
+        "samples_ms": [
+          756.0,
+          583.0,
+          568.0,
+          605.0,
+          539.0
+        ]
+      }
+    },
+    "app_warm_start_times": {
+      "camera": {
+        "max_ms": 121.0,
+        "median_ms": 79.5,
+        "min_ms": 68.0,
+        "p95_ms": 121.0,
+        "samples_ms": [
+          68.0,
+          121.0,
+          83.0,
+          76.0
+        ]
+      },
+      "settings": {
+        "max_ms": 147.0,
+        "median_ms": 125.0,
+        "min_ms": 89.0,
+        "p95_ms": 147.0,
+        "samples_ms": [
+          125.0,
+          147.0,
+          98.0,
+          143.0,
+          89.0
+        ]
+      }
+    },
+    "boot_time": null,
+    "disabled_packages": 17,
+    "enabled_packages": 385,
+    "label": "maximum",
+    "meminfo": {
+      "Active": 1644236,
+      "Active(anon)": 307072,
+      "Active(file)": 1337164,
+      "AnonHugePages": 0,
+      "AnonPages": 1092104,
+      "Bounce": 0,
+      "Buffers": 2160,
+      "Cached": 4346408,
+      "CmaFree": 11876,
+      "CmaTotal": 49152,
+      "CommitLimit": 8922924,
+      "Committed_AS": 219119044,
+      "Dirty": 10144,
+      "FileHugePages": 0,
+      "FilePmdMapped": 0,
+      "Inactive": 3623328,
+      "Inactive(anon)": 802060,
+      "Inactive(file)": 2821268,
+      "KReclaimable": 400344,
+      "KernelStack": 68064,
+      "Mapped": 1170704,
+      "MemAvailable": 5132800,
+      "MemFree": 784276,
+      "MemTotal": 7968356,
+      "Mlocked": 176280,
+      "NFS_Unstable": 0,
+      "PageTables": 119824,
+      "Percpu": 9792,
+      "SReclaimable": 196308,
+      "SUnreclaim": 251436,
+      "ShadowCallStack": 17036,
+      "Shmem": 19184,
+      "ShmemHugePages": 0,
+      "ShmemPmdMapped": 0,
+      "Slab": 447744,
+      "SwapCached": 16712,
+      "SwapFree": 3396480,
+      "SwapTotal": 4938748,
+      "Unevictable": 177604,
+      "VmallocChunk": 0,
+      "VmallocTotal": 259653632,
+      "VmallocUsed": 182704,
+      "Writeback": 0,
+      "WritebackTmp": 0
+    },
+    "pss_kb": {
+      "launcher": 143723,
+      "systemui": 256731
+    },
+    "system_packages": 301
+  }
+]
