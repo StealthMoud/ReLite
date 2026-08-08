@@ -25,7 +25,8 @@ class FolderSheetDialog : DialogFragment() {
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val app = requireActivity().application as ReliteHomeApplication
         val launcherApps = requireContext().getSystemService(LauncherApps::class.java)
-        val iconCache = IconCache(launcherApps)
+        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
+        val iconCache = IconCache(launcherApps, iconSizePx)
 
         val componentKeys = requireArguments().getStringArrayList(ARG_COMPONENT_KEYS).orEmpty()
         val allApps = app.appRepository.loadAll().associateBy { it.componentKey }

@@ -29,7 +29,8 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val app = requireActivity().application as ReliteHomeApplication
         val launcherApps = requireContext().getSystemService(LauncherApps::class.java)
-        val iconCache = IconCache(launcherApps)
+        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
+        val iconCache = IconCache(launcherApps, iconSizePx)
 
         adapter = AppDrawerAdapter(
             iconCache = iconCache,

@@ -22,7 +22,8 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         val pageIndex = requireArguments().getInt(ARG_PAGE_INDEX)
         val app = requireActivity().application as ReliteHomeApplication
         val launcherApps = requireContext().getSystemService(LauncherApps::class.java)
-        val iconCache = IconCache(launcherApps)
+        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
+        val iconCache = IconCache(launcherApps, iconSizePx)
 
         val pageItems = app.workspaceRepository.load().items.filter { it.position.page == pageIndex }
         val labelsByComponentKey = app.appRepository.loadAll().associateBy { it.componentKey }

@@ -32,7 +32,8 @@ class WorkspaceDockView @JvmOverloads constructor(
         onAppsButtonClick: () -> Unit,
     ) {
         removeAllViews()
-        val iconCache = IconCache(launcherApps)
+        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
+        val iconCache = IconCache(launcherApps, iconSizePx)
         val inflater = LayoutInflater.from(context)
 
         for (key in componentKeys) {
