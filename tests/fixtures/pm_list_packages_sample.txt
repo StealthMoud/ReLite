@@ -1,0 +1,4 @@
+package:/system/app/SystemUI/SystemUI.apk=com.android.systemui
+package:/system/priv-app/Phone/Phone.apk=com.android.phone
+package:/system/app/HeytapMarket/HeytapMarket.apk=com.heytap.market
+package:/data/app/~~fake==/com.example.thirdparty-abc==/base.apk=com.example.thirdparty
