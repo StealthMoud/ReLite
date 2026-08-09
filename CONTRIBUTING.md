@@ -26,7 +26,7 @@ Thanks for wanting to help make Android lighter without replacing the hardware l
 ## Development setup
 
 ```bash
-git clone https://github.com/ReLite/ReLite.git
+git clone https://github.com/StealthMoud/ReLite.git
 cd ReLite
 ./scripts/bootstrap.sh
 relite doctor

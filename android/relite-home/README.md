@@ -2,22 +2,43 @@
 
 A lightweight, original Android launcher. Kotlin + standard Android Views
 (no Jetpack Compose — predictable memory/startup overhead matters more
-than declarative UI convenience on a 6 GB device with OEM RAM Expansion in
-the picture).
+than declarative UI convenience). Validated on a physical RMX5303 unit
+with ~8 GB of RAM; ReLite Home itself makes no fixed RAM assumption —
+actual RAM varies by SKU/region and is read from the device, not
+hardcoded anywhere in this module.
 
-## What's here (v1 skeleton)
+## What's actually working (v0.2.0)
 
 - **Home workspace** — paged grid (`ViewPager2` + `HomePageFragment`),
   page indicator, dock with a dedicated "open drawer" button.
 - **App drawer** — alphabetical + local search, no network, no
   recommendations (`AppDrawerFragment`, `AppSearch`).
-- **Folders** — large rounded dialog presentation (`FolderSheetDialog`).
-- **Widgets** — `AppWidgetHost` wrapper (`ReliteAppWidgetHost`) and a
-  pick/bind trampoline (`WidgetPickerActivity`).
+- **Add to Home / Remove from Home / App info** — long-press in the
+  drawer or on a home icon (`WorkspaceController`). Placement is
+  auto-assigned to the first free grid cell; there is no drag-to-move
+  gesture yet.
+- **Folders** — large rounded dialog presentation (`FolderSheetDialog`)
+  and full create/rename/add-member/remove-member/delete-if-empty
+  support at the `WorkspaceController` level — not yet wired to a
+  folder-editing UI (creation/editing dialogs don't exist yet).
+- **Dock, page, and widget editing** — supported by `WorkspaceController`
+  (add/remove/reorder dock, add/remove pages, add/resize/remove
+  widgets) but likewise not yet wired to interactive UI; only the
+  underlying widget host/pick trampoline (`ReliteAppWidgetHost`,
+  `WidgetPickerActivity`) exists.
+- **Dead-shortcut cleanup** — a workspace item, dock entry, or folder
+  membership referring to an uninstalled package is automatically
+  dropped (`ReliteHomeApplication`'s `AppRepository` reconciliation).
+- **Shared, bounded icon cache** — one `IconCache` instance for the
+  whole process (not one per screen/dialog), byte-budgeted, trimmed
+  under memory pressure (`onTrimMemory`).
 - **Persistence** — `WorkspaceRepository` (schema-versioned JSON,
-  pure-Kotlin and unit-testable via `Storage`/`InMemoryStorage`).
+  pure-Kotlin and unit-testable via `Storage`/`InMemoryStorage`) plus
+  `WorkspaceController`, the single place mutations go through.
 
-No `INTERNET` permission, no analytics, no accounts, no ads. See
+No `INTERNET` permission, no analytics, no accounts, no ads, no
+`QUERY_ALL_PACKAGES` (app discovery goes through `LauncherApps`, which
+is visibility-exempt for the default-launcher role). See
 `app/src/main/AndroidManifest.xml`.
 
 ## Building
@@ -27,13 +48,15 @@ cd android/relite-home
 echo "sdk.dir=$ANDROID_HOME" > local.properties   # or use Android Studio, which does this for you
 ./gradlew assembleDebug
 ./gradlew testDebugUnitTest
+./gradlew lint
 ```
 
 Unit tests (`app/src/test/`) cover the framework-independent logic —
-`AppSearch` and `WorkspaceRepository` — without needing an emulator or
-Robolectric. UI/integration behavior (drawer scrolling, folder open
-animation, widget binding) requires a device/emulator and is not yet
-covered by `androidTest`.
+`AppSearch`, `WorkspaceRepository`, `WorkspaceController`,
+`BoundedByteCache` — without needing an emulator or Robolectric.
+UI/integration behavior (drawer scrolling, folder open animation,
+widget binding) requires a device/emulator and is not yet covered by
+`androidTest`.
 
 ## Setting ReLite Home as default launcher (for manual testing)
 

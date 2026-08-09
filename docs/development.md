@@ -19,7 +19,7 @@ docs/                This directory
 Requires Python 3.11+.
 
 ```bash
-git clone https://github.com/ReLite/ReLite.git
+git clone https://github.com/StealthMoud/ReLite.git
 cd ReLite
 ./scripts/bootstrap.sh
 source .venv/bin/activate

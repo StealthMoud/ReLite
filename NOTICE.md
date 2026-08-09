@@ -4,7 +4,7 @@ ReLite
 Copyright 2026 The ReLite Contributors
 
 This product includes software developed as part of the ReLite project
-(https://github.com/ReLite/ReLite), licensed under the Apache License,
+(https://github.com/StealthMoud/ReLite), licensed under the Apache License,
 Version 2.0. See the `LICENSE` file for the full license text.
 
 ## Third-party references and inspirations
