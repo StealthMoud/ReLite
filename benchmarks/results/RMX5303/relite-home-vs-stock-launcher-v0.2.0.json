@@ -1,0 +1,27 @@
+{
+  "methodology": "benchmarks/methodology.md#a-note-on-pss-settle-time",
+  "date": "2026-08-09",
+  "device": "RMX5303",
+  "procedure": "force-stop, cold-start (am start -W), settle 45s (same verified settle time as v0.1.0), then dumpsys meminfo TOTAL PSS. 3 runs each, median reported, no cherry-picking.",
+  "relite_home": {
+    "package": "io.relite.home",
+    "activity": ".ui.MainActivity",
+    "samples_kb": [
+      53450,
+      53957,
+      54144
+    ],
+    "median_kb": 53957
+  },
+  "stock_launcher": {
+    "package": "com.android.launcher3",
+    "activity": "com.android.launcher3.uioverrides.QuickstepLauncher",
+    "samples_kb": [
+      123559,
+      123310,
+      123282
+    ],
+    "median_kb": 123310
+  },
+  "reduction_pct": 56.2
+}

@@ -6,17 +6,20 @@ original lightweight launcher.**
 First validated device: **realme C71 / RMX5303**
 
 ```text
-Settings cold launch:  1177 ms  →  544 ms   (performance profile)
-Camera cold launch:     724 ms  →  612 ms   (performance profile)
-Launcher settled PSS:  109 MB   →   75 MB   (ReLite Home vs. stock, −31.5%)
-Enabled packages:       400     →   390     (performance profile)
+Settings cold launch:  1177 ms  →  544 ms    (performance profile)
+Camera cold launch:     724 ms  →  612 ms    (performance profile)
+Launcher settled PSS:  123 MB   →  54 MB     (ReLite Home vs. stock, −56.2%)
+Enabled packages:       400     →   390      (performance profile)
 
 Recommended profile: performance
 ```
 
 Full methodology and every number's provenance:
-`benchmarks/results/RMX5303/v0.1.0.md`. These are real measurements from
-a physical unit, not projections — see `docs/safety.md` and
+`benchmarks/results/RMX5303/v0.2.0.md` (device/profile numbers unchanged
+from v0.1.0; the launcher PSS comparison was re-measured for v0.2.0 —
+see that report for why the gap widened between sessions and what that
+does and doesn't prove). These are real measurements from a physical
+unit, not projections — see `docs/safety.md` and
 `benchmarks/methodology.md` for how they were produced and what they
 don't claim.
 
@@ -95,11 +98,11 @@ See `docs/recovery.md` for the full recovery ladder, and
 `docs/RMX5303-validation-checklist.md` for what's worth manually
 double-checking on your specific phone/apps after applying a profile.
 
-## Real RMX5303 results (v0.1.0, 2026-08-08)
+## Real RMX5303 results (v0.2.0, 2026-08-09)
 
 Validated end-to-end against a physical RMX5303EEA unit (firmware
 `AP3A.240905.015.A2`, Android 15). Full methodology and every number's
-provenance: `benchmarks/results/RMX5303/v0.1.0.md`. Package-by-package
+provenance: `benchmarks/results/RMX5303/v0.2.0.md`. Package-by-package
 classification evidence: `devices/realme/RMX5303/findings.md` and the
 generated table at `devices/realme/RMX5303/PACKAGES.md`.
 
@@ -109,18 +112,22 @@ generated table at `devices/realme/RMX5303/PACKAGES.md`.
 | Camera cold start (median) | 724 ms | 629 ms | 612 ms | 596 ms |
 | Settings cold start (median) | 1177 ms | 1170 ms | 544 ms | 583 ms |
 
-All four profiles were applied and verified stable on this unit across
-two independent validation passes (boot completes, SystemUI/Settings/
-Camera/telephony/Bluetooth intact, no crashes in logcat), including a
-complete restore round-trip that reproduced a byte-for-byte identical
-package set. `performance` is the ReLite-recommended default for this
-device — see `docs/profiles.md` for the full inheritance model and what
-qualifies a package for each level.
+Device/profile numbers are unchanged from v0.1.0 (no package action
+changed this pass). All four profiles were applied and verified stable
+on this unit across multiple independent validation passes (boot
+completes, SystemUI/Settings/Camera/telephony/Bluetooth intact, no
+crashes in logcat), including a complete restore round-trip re-run
+against the rewritten v0.2.0 restore/apply engine that reproduced the
+same package set. `performance` is the ReLite-recommended default for
+this device — see `docs/profiles.md` for the full inheritance model and
+what qualifies a package for each level.
 
 ReLite Home, installed and tested on this same unit: settled PSS
-**74,817 kB, ~31.5% lower** than the stock launcher's 109,181 kB
-(median of 3 runs each, decay-curve-verified settle time — see
-`benchmarks/methodology.md`).
+**53,957 kB, ~56.2% lower** than the stock launcher's 123,310 kB
+(median of 3 runs each, same decay-curve-verified settle time as
+v0.1.0 — see `benchmarks/results/RMX5303/v0.2.0.md` for why this gap
+widened since v0.1.0's 31.5% and what that measurement can't tell you
+on its own).
 
 Manual, human-only validation (calls, SMS, GPS, fingerprint, etc.) is
 tracked separately and was not a blocker for any of the above — see
@@ -178,7 +185,7 @@ adb install -r android/relite-home/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 See `android/relite-home/README.md` for setting it as your default
-launcher and what the v1 skeleton does and doesn't cover yet.
+launcher and exactly what's implemented versus domain-logic-only so far.
 
 ## Architecture
 
