@@ -1,79 +1,50 @@
-"""Reversible package actions: build a plan, apply it, journal every change.
+"""Executes a profile transition plan and journals every change.
 
 Default action is `pm disable-user`. A more aggressive profile can use
 `pm uninstall --user 0`, which is reversed with
 `cmd package install-existing --user 0`. ReLite never deletes APKs from
 /system, /product, /vendor, or /system_ext, and never remounts system
 partitions.
+
+v0.3.0 (sections 8-11 of the master plan) replaced the old
+build_plan()/apply_plan() pair — which independently derived a single
+command per package from an `Action` string — with execution driven
+directly by `relite.profile_planner.DesiredTransition`, the same
+baseline-aware planner `relite plan` renders for preview. There is no
+longer a second, independent way to decide what command a package
+needs: plan and apply share one source of truth.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from relite.adb import AdbClient
-from relite.classifier import Action, ClassificationDatabase, Profile
 from relite.package_state import PackageState, state_of
-from relite.packages import PackageInfo, list_packages
+from relite.packages import list_packages
+from relite.profile_planner import DesiredTransition
 
-JOURNAL_SCHEMA_VERSION = 2
+JOURNAL_SCHEMA_VERSION = 3
+
+# Command substring `pm`/`cmd package` prints on genuine success — used
+# only as a *diagnostic* signal recorded alongside the result, never to
+# decide pass/fail on its own (section 9: exit code and stdout text are
+# diagnostic; live post-command state is authoritative). Real-device
+# finding (RMX5303, 2026-08-08): `pm disable-user` can exit 0 while the
+# platform silently refuses the change, printing "new state: default"
+# instead of "new state: disabled-user".
+_EXPECTED_OUTPUT_SUBSTRING: dict[PackageState, str] = {
+    PackageState.PRESENT_DISABLED: "disabled-user",
+}
 
 
-@dataclass
-class PlannedAction:
-    package: str
-    action: Action
-    previous_state: str  # "enabled" | "disabled" | "uninstalled-user" | "unknown"
-    reason: str
-    profile: Profile
-
-    def command(self) -> list[str] | None:
-        if self.action == "keep":
-            return None
-        if self.action == "disable":
-            return ["shell", "pm", "disable-user", "--user", "0", self.package]
-        if self.action == "uninstall-user":
-            return ["shell", "pm", "uninstall", "--user", "0", self.package]
-        raise ValueError(f"unknown action {self.action}")
-
-    def rollback_command(self) -> list[str] | None:
-        if self.action == "keep":
-            return None
-        if self.action == "disable":
-            return ["shell", "pm", "enable", self.package]
-        if self.action == "uninstall-user":
-            return ["shell", "cmd", "package", "install-existing", "--user", "0", self.package]
-        raise ValueError(f"unknown action {self.action}")
-
-    def expected_output_substring(self) -> str | None:
-        """Substring `pm`/`cmd package` must print on genuine success.
-
-        Found via real-device testing (RMX5303, 2026-08-08): `pm
-        disable-user` can exit 0 while the platform silently refuses the
-        change, printing "new state: default" instead of "new state:
-        disabled-user" — some OEM builds protect specific packages from
-        user-level disable independently of ReLite's own protected-package
-        policy. Exit code alone is not sufficient evidence of success.
-        """
-        if self.action == "disable":
-            return "disabled-user"
-        if self.action == "uninstall-user":
-            return "Success"
-        return None
-
-    def expected_state(self) -> PackageState | None:
-        """The live `PackageState` this action should produce — the
-        authoritative check `apply_plan` verifies against, independent of
-        whatever text `pm`/`cmd package` happened to print."""
-        if self.action == "disable":
-            return PackageState.PRESENT_DISABLED
-        if self.action == "uninstall-user":
-            return PackageState.ABSENT_FOR_USER
-        return None
+def new_apply_id() -> str:
+    return uuid.uuid4().hex
 
 
 @dataclass
@@ -82,17 +53,26 @@ class ActionRecord:
     package: str
     previous_state: str
     action: str
-    command: str
     result: str
-    rollback_command: str
     profile: str
-    # v2 fields (section 34 of the v0.2.0 plan). Defaulted so a v0.1
-    # journal loads unchanged — old records implicitly get schema=1 and
-    # unknown/unverified state, which is exactly what's true of them.
-    schema: int = 1
+    # v3 fields (section 10 of the v0.3.0 plan): a transaction id shared
+    # by every record from one `relite apply`, the pre-ReLite baseline
+    # state (what `relite undo`'s state-engine rollback target requires
+    # to distinguish from "just undo to previous_state"), and the full
+    # (possibly multi-step) command list `package_state.plan_transition`
+    # produced.
+    apply_id: str = ""
+    baseline_state: str = ""
+    commands: list[str] = field(default_factory=list)
     requested_state: str = ""
     observed_state: str = ""
     verified: bool | None = None
+    schema: int = 1
+    # v1/v2 fields, kept only so old journal lines still decode via
+    # ActionRecord(**data) and so v1/v2 records without enough explicit
+    # state information still have *something* rollback can fall back to.
+    command: str = ""
+    rollback_command: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -100,117 +80,92 @@ class ActionRecord:
             "package": self.package,
             "previous_state": self.previous_state,
             "action": self.action,
-            "command": self.command,
             "result": self.result,
-            "rollback_command": self.rollback_command,
             "profile": self.profile,
-            "schema": self.schema,
+            "apply_id": self.apply_id,
+            "baseline_state": self.baseline_state,
+            "commands": self.commands,
             "requested_state": self.requested_state,
             "observed_state": self.observed_state,
             "verified": self.verified,
+            "schema": self.schema,
+            "command": self.command,
+            "rollback_command": self.rollback_command,
         }
 
 
-def build_plan(
-    installed: list[PackageInfo],
-    db: ClassificationDatabase,
-    profile: Profile,
-) -> list[PlannedAction]:
-    """Decide an action for every installed package under a given profile."""
-    plan: list[PlannedAction] = []
-    for pkg in installed:
-        action = db.decide(pkg.name, profile)
-        if action == "keep":
-            continue
-        if pkg.disabled and action == "disable":
-            continue  # already disabled, nothing to do
-        classification = db.classify(pkg.name)
-        previous_state = "disabled" if pkg.disabled else "enabled"
-        plan.append(
-            PlannedAction(
-                package=pkg.name,
-                action=action,
-                previous_state=previous_state,
-                reason=classification.reason or "no reason recorded",
-                profile=profile,
-            )
-        )
-    return plan
-
-
-def apply_plan(
+def apply_transitions(
     client: AdbClient,
-    plan: list[PlannedAction],
+    apply_id: str,
+    profile: str,
+    transitions: list[DesiredTransition],
     journal_path: Path,
     *,
     dry_run: bool = False,
 ) -> list[ActionRecord]:
-    """Execute a plan, appending one ActionRecord per package to the journal.
+    """Execute every transition in a profile plan, appending one
+    ActionRecord per package to the journal.
 
-    Command exit code and stdout text are only the *first* signal — see
-    `PlannedAction.expected_output_substring()`'s docstring for why an OEM
-    build can print success while silently refusing the change. The
-    authoritative check is a single follow-up `list_packages()` query
-    after every command has run, comparing each package's actual live
-    `PackageState` against what the action should have produced. This is
-    one extra ADB round-trip for the whole plan, not one per package.
+    Live post-command package state is the authoritative check (one
+    follow-up `list_packages()` query for the whole plan, not one per
+    package); command exit code and stdout text are recorded but only
+    used to add diagnostic detail to an already-failed result.
     """
-    executed: list[tuple[PlannedAction, list[str], list[str], str]] = []
+    executed: list[tuple[DesiredTransition, str]] = []
 
-    for item in plan:
-        command = item.command()
-        rollback = item.rollback_command()
-        if command is None or rollback is None:
-            continue
+    for item in transitions:
         if dry_run:
             result = "dry-run"
         else:
-            cmd_result = client.raw(*command)
-            expected = item.expected_output_substring()
-            if not cmd_result.ok:
-                result = f"error: {cmd_result.stderr.strip()}"
-            elif expected and expected not in cmd_result.stdout:
-                result = f"error: platform refused change: {cmd_result.stdout.strip()}"
-            else:
-                result = "ok"
-        executed.append((item, command, rollback, result))
+            result = "ok"
+            for command in item.transition.commands:
+                cmd_result = client.shell(command)
+                if not cmd_result.ok:
+                    result = f"error: {cmd_result.stderr.strip()}"
+                    break
+                expected_substring = _EXPECTED_OUTPUT_SUBSTRING.get(item.desired_state)
+                if expected_substring and expected_substring not in cmd_result.stdout:
+                    # Diagnostic only — final pass/fail still comes from the
+                    # live-state re-query below, not this text match alone.
+                    result = f"diagnostic: unexpected output for {command!r}: {cmd_result.stdout.strip()!r}"
+        executed.append((item, result))
 
     live_state: dict[str, PackageState] = {}
-    if not dry_run and any(result == "ok" for _, _, _, result in executed):
+    if not dry_run and any(not result.startswith("error:") for _, result in executed):
         live_packages = {pkg.name: pkg for pkg in list_packages(client)}
-        live_state = {item.package: state_of(live_packages.get(item.package)) for item, *_ in executed}
+        live_state = {item.package: state_of(live_packages.get(item.package)) for item, _ in executed}
 
     records: list[ActionRecord] = []
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     with journal_path.open("a") as journal:
-        for item, command, rollback, result in executed:
-            expected_state = item.expected_state()
-            observed_state: PackageState | None = live_state.get(item.package)
+        for item, result in executed:
+            observed_state = live_state.get(item.package)
             verified: bool | None = None
 
-            if result == "ok" and expected_state is not None and observed_state is not None:
-                verified = observed_state == expected_state
+            if not result.startswith("error:") and observed_state is not None:
+                verified = observed_state == item.desired_state
                 if not verified:
                     result = (
                         f"error: live state after apply is {observed_state.value}, "
-                        f"expected {expected_state.value}"
+                        f"expected {item.desired_state.value}"
                     )
-            elif result == "dry-run":
-                verified = None
+                elif result.startswith("diagnostic:"):
+                    result = "ok"  # live state confirms success despite the unexpected stdout text
 
             record = ActionRecord(
                 timestamp=datetime.now(UTC).isoformat(),
                 package=item.package,
-                previous_state=item.previous_state,
+                previous_state=item.current_state.value,
                 action=item.action,
-                command=" ".join(command),
                 result=result,
-                rollback_command=" ".join(rollback),
-                profile=item.profile,
-                schema=JOURNAL_SCHEMA_VERSION,
-                requested_state=expected_state.value if expected_state else "",
+                profile=profile,
+                apply_id=apply_id,
+                baseline_state=item.baseline_state.value,
+                commands=item.transition.commands,
+                requested_state=item.desired_state.value,
                 observed_state=observed_state.value if observed_state else "",
                 verified=verified,
+                schema=JOURNAL_SCHEMA_VERSION,
             )
             journal.write(json.dumps(record.to_dict()) + "\n")
             records.append(record)
@@ -227,3 +182,15 @@ def load_journal(journal_path: Path) -> list[ActionRecord]:
         data = json.loads(line)
         records.append(ActionRecord(**data))
     return records
+
+
+def records_for_apply(journal_path: Path, apply_id: str) -> list[ActionRecord]:
+    return [r for r in load_journal(journal_path) if r.apply_id == apply_id]
+
+
+def latest_apply_id(journal_path: Path) -> str | None:
+    records = load_journal(journal_path)
+    for record in reversed(records):
+        if record.apply_id:
+            return record.apply_id
+    return None

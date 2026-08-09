@@ -26,63 +26,157 @@ def _write_journal(path: Path, records: list[ActionRecord]) -> None:
             f.write(json.dumps(r.to_dict()) + "\n")
 
 
-def test_restore_from_journal_reverses_every_supported_action(tmp_path: Path, fake_client: AdbClient, fake_runner):
+def test_restore_from_journal_reverses_every_supported_action_v3(tmp_path: Path, fake_client: AdbClient, fake_runner):
+    """v3 records carry an explicit previous_state PackageState value;
+    rollback goes through the verified package-state engine, not a
+    replayed raw command string."""
+    _set_list_packages_sequence(
+        fake_runner,
+        before={"all": [], "-e": [], "-3": [], "-s": [], "-d": []},
+        after={
+            "all": ["com.example.ads", "com.example.dead"],
+            "-e": ["com.example.ads", "com.example.dead"],
+            "-3": [],
+            "-s": [],
+            "-d": [],
+        },
+    )
     journal_path = tmp_path / "actions.jsonl"
     records = [
         ActionRecord(
             timestamp="2026-08-08T00:00:00Z",
             package="com.example.ads",
-            previous_state="enabled",
+            previous_state="present_enabled",
             action="disable",
-            command="shell pm disable-user --user 0 com.example.ads",
             result="ok",
-            rollback_command="shell pm enable com.example.ads",
             profile="safe",
+            apply_id="apply-1",
+            schema=3,
         ),
         ActionRecord(
             timestamp="2026-08-08T00:00:01Z",
             package="com.example.dead",
-            previous_state="enabled",
+            previous_state="present_enabled",
             action="uninstall-user",
-            command="shell pm uninstall --user 0 com.example.dead",
             result="ok",
-            rollback_command="shell cmd package install-existing --user 0 com.example.dead",
             profile="maximum",
+            apply_id="apply-1",
+            schema=3,
         ),
     ]
     _write_journal(journal_path, records)
-
-    for record in records:
-        fake_runner.set_response(
-            ["adb", "-s", "EMULATOR123"] + record.rollback_command.split(), stdout="Success"
-        )
 
     result = restore_from_journal(fake_client, journal_path)
 
     assert set(result.packages_restored) == {"com.example.ads", "com.example.dead"}
     assert result.errors == []
-    # journal should be reversed most-recent-first
-    called_packages = [c[-1] for c in fake_runner.calls]
-    assert called_packages == ["com.example.dead", "com.example.ads"]
 
 
-def test_restore_from_journal_skips_failed_or_dry_run_original_actions(tmp_path: Path, fake_client, fake_runner):
+def test_restore_from_journal_skips_failed_original_actions(tmp_path: Path, fake_client, fake_runner):
     journal_path = tmp_path / "actions.jsonl"
     record = ActionRecord(
         timestamp="2026-08-08T00:00:00Z",
         package="com.example.failed",
-        previous_state="enabled",
+        previous_state="present_enabled",
         action="disable",
-        command="shell pm disable-user --user 0 com.example.failed",
         result="error: permission denied",
-        rollback_command="shell pm enable com.example.failed",
         profile="safe",
+        apply_id="apply-1",
+        schema=3,
     )
     _write_journal(journal_path, [record])
 
     result = restore_from_journal(fake_client, journal_path)
     assert result.packages_restored == []
-    assert fake_runner.calls == []
+
+
+def test_restore_from_journal_scoped_to_apply_id_is_undo_semantics(tmp_path: Path, fake_client, fake_runner):
+    """relite undo: only the given transaction's records are reversed,
+    not the device's entire ReLite history."""
+    _set_list_packages_sequence(
+        fake_runner,
+        before={"all": [], "-e": [], "-3": [], "-s": [], "-d": []},
+        after={"all": ["com.example.b"], "-e": ["com.example.b"], "-3": [], "-s": [], "-d": []},
+    )
+    journal_path = tmp_path / "actions.jsonl"
+    records = [
+        ActionRecord(
+            timestamp="2026-08-08T00:00:00Z",
+            package="com.example.a",
+            previous_state="present_enabled",
+            action="disable",
+            result="ok",
+            profile="safe",
+            apply_id="apply-old",
+            schema=3,
+        ),
+        ActionRecord(
+            timestamp="2026-08-08T00:00:01Z",
+            package="com.example.b",
+            previous_state="present_enabled",
+            action="disable",
+            result="ok",
+            profile="performance",
+            apply_id="apply-new",
+            schema=3,
+        ),
+    ]
+    _write_journal(journal_path, records)
+
+    result = restore_from_journal(fake_client, journal_path, apply_id="apply-new")
+
+    assert result.packages_restored == ["com.example.b"]
+
+
+def test_restore_from_journal_legacy_v2_record_falls_back_to_rollback_command(
+    tmp_path: Path, fake_client, fake_runner
+):
+    """A v1/v2 record's previous_state ("enabled"/"disabled") is mapped
+    to the equivalent PackageState and goes through the verified engine
+    just like a v3 record — this is the "keep old journals readable"
+    requirement, not a separate code path."""
+    _set_list_packages_sequence(
+        fake_runner,
+        before={"all": [], "-e": [], "-3": [], "-s": [], "-d": []},
+        after={"all": ["com.example.legacy"], "-e": ["com.example.legacy"], "-3": [], "-s": [], "-d": []},
+    )
+    journal_path = tmp_path / "actions.jsonl"
+    record = ActionRecord(
+        timestamp="2026-08-08T00:00:00Z",
+        package="com.example.legacy",
+        previous_state="enabled",  # v1/v2 style, not a PackageState.value
+        action="disable",
+        command="shell pm disable-user --user 0 com.example.legacy",
+        result="ok",
+        rollback_command="shell pm enable com.example.legacy",
+        profile="safe",
+        schema=2,
+    )
+    _write_journal(journal_path, [record])
+
+    result = restore_from_journal(fake_client, journal_path)
+
+    assert result.packages_restored == ["com.example.legacy"]
+
+
+def test_restore_from_journal_record_with_no_usable_state_info_is_an_error(tmp_path: Path, fake_client, fake_runner):
+    journal_path = tmp_path / "actions.jsonl"
+    record = ActionRecord(
+        timestamp="2026-08-08T00:00:00Z",
+        package="com.example.mystery",
+        previous_state="",
+        action="disable",
+        result="ok",
+        rollback_command="",
+        profile="safe",
+        schema=3,
+    )
+    _write_journal(journal_path, [record])
+
+    result = restore_from_journal(fake_client, journal_path)
+
+    assert result.packages_restored == []
+    assert any("com.example.mystery" in e for e in result.errors)
 
 
 _LIST_PACKAGES_SUFFIXES = ("all", "-s", "-3", "-d", "-e")

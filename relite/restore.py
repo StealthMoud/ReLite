@@ -10,10 +10,27 @@ from pathlib import Path
 
 from relite.actions import ActionRecord, load_journal
 from relite.adb import AdbClient
-from relite.package_state import PackageState, plan_transition, state_of
+from relite.package_state import PackageState, StateTransition, plan_transition, state_of
 from relite.packages import list_packages
 from relite.snapshot import MANAGED_SETTINGS, Snapshot
 from relite.tuning import restore_managed_setting
+
+# v1/v2 journal records used bare "enabled"/"disabled"/"uninstalled-user"
+# strings for previous_state, predating the explicit PackageState model.
+_LEGACY_STATE_ALIASES: dict[str, PackageState] = {
+    "enabled": PackageState.PRESENT_ENABLED,
+    "disabled": PackageState.PRESENT_DISABLED,
+    "uninstalled-user": PackageState.ABSENT_FOR_USER,
+}
+
+
+def _parse_record_state(value: str) -> PackageState | None:
+    if not value:
+        return None
+    try:
+        return PackageState(value)
+    except ValueError:
+        return _LEGACY_STATE_ALIASES.get(value)
 
 
 @dataclass
@@ -23,19 +40,85 @@ class RestoreResult:
     errors: list[str]
 
 
-def restore_from_journal(client: AdbClient, journal_path: Path, *, dry_run: bool = False) -> RestoreResult:
-    """Reverse every recorded action, most recent first."""
-    records: list[ActionRecord] = load_journal(journal_path)
-    restored: list[str] = []
+def restore_from_journal(
+    client: AdbClient, journal_path: Path, *, apply_id: str | None = None, dry_run: bool = False
+) -> RestoreResult:
+    """Reverse recorded actions using the package-state engine, not the
+    stored raw command strings (section 11 of the v0.3.0 plan).
+
+    With `apply_id` set, only that transaction's records are reversed —
+    the `relite undo` semantics (section 12): undo the most recent
+    `relite apply`, not a device's entire ReLite history. Without it,
+    every "ok" record is reversed, most recent first — the whole-journal
+    behavior `relite restore` (no --snapshot) has always had.
+
+    A v3 record's `previous_state` is an explicit `PackageState` value,
+    so rollback becomes `plan_transition(current_live_state,
+    previous_state)` — the same verified engine `restore_from_snapshot`
+    uses, not a replay of whatever command string happened to be
+    generated at apply time. A v1/v2 record only has
+    "enabled"/"disabled"/"uninstalled-user" strings, mapped to the
+    equivalent `PackageState`. A record with neither a parseable state
+    nor a stored `rollback_command` is reported as an error rather than
+    silently skipped or guessed at.
+    """
+    records = load_journal(journal_path)
+    if apply_id is not None:
+        records = [r for r in records if r.apply_id == apply_id]
+
     errors: list[str] = []
+    engine_steps: list[tuple[ActionRecord, StateTransition]] = []
+    legacy_steps: list[ActionRecord] = []
+    current = {pkg.name: pkg for pkg in list_packages(client)}
 
     for record in reversed(records):
-        if record.result not in ("ok", "dry-run"):
+        if record.result != "ok":
             continue
+        target = _parse_record_state(record.previous_state)
+        if target is not None:
+            transition = plan_transition(record.package, state_of(current.get(record.package)), target)
+            if not transition.is_noop:
+                engine_steps.append((record, transition))
+        elif record.rollback_command:
+            legacy_steps.append(record)
+        else:
+            errors.append(f"{record.package}: no explicit state or rollback command to reverse from")
+
+    if dry_run:
+        dry_run_restored = [r.package for r, _ in engine_steps] + [r.package for r in legacy_steps]
+        return RestoreResult(packages_restored=dry_run_restored, settings_restored={}, errors=errors)
+
+    attempted: list[str] = []
+    for record, transition in engine_steps:
+        ok = True
+        last_error = ""
+        for command in transition.commands:
+            result = client.shell(command)
+            if not result.ok:
+                ok = False
+                last_error = result.stderr.strip()
+                break
+        if ok:
+            attempted.append(record.package)
+        else:
+            errors.append(f"{record.package}: {last_error}")
+
+    restored: list[str] = []
+    if attempted:
+        observed_after = {pkg.name: pkg for pkg in list_packages(client)}
+        by_package = {record.package: transition for record, transition in engine_steps}
+        for name in attempted:
+            transition = by_package[name]
+            observed = state_of(observed_after.get(name))
+            if observed == transition.desired:
+                restored.append(name)
+            else:
+                errors.append(
+                    f"{name}: expected {transition.desired.value} after undo, observed {observed.value}"
+                )
+
+    for record in legacy_steps:
         rollback_args = record.rollback_command.split()
-        if dry_run:
-            restored.append(record.package)
-            continue
         result = client.raw(*rollback_args)
         if result.ok:
             restored.append(record.package)
