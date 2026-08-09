@@ -46,14 +46,14 @@ type either way).
 ## Packaging a release
 
 ```bash
-./scripts/package-release.sh 0.1.0
+./scripts/package-release.sh 0.2.0
 ```
 
 Produces:
 
 ```text
-dist/ReLite-Home-v0.1.0-debug.apk
-dist/ReLite-Home-v0.1.0-debug.apk.sha256
+dist/ReLite-Home-v0.2.0-debug.apk
+dist/ReLite-Home-v0.2.0-debug.apk.sha256
 ```
 
 `dist/` is gitignored — these are release *artifacts*, attached to a
@@ -81,8 +81,8 @@ working tree clean
 ## Tagging
 
 ```bash
-git tag -a v0.1.0 -m "ReLite v0.1.0"
-git push origin v0.1.0   # only if/when you intend to publish — see below
+git tag -a v0.2.0 -m "ReLite v0.2.0"
+git push origin v0.2.0   # only if/when you intend to publish — see below
 ```
 
 Pushing a tag (and any `gh release create`) publishes to a remote and is
@@ -101,6 +101,6 @@ the loop.
   section — the CLI itself is installed from source via
   `./scripts/bootstrap.sh`, not a separate package, until a PyPI release
   is set up; see `docs/development.md`)
-- Link to `benchmarks/results/RMX5303/v0.1.0.md`
+- Link to `benchmarks/results/RMX5303/v0.2.0.md`
 - Link to `CHANGELOG.md`'s entry for this version
 - Rollback instructions: `docs/recovery.md`
