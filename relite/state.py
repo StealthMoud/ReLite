@@ -31,6 +31,11 @@ class DeviceState:
     active_profile: str | None = None
     applied_at: str | None = None
     last_snapshot: str | None = None
+    # Section 6/7 (v0.3.0): the ONE snapshot the profile planner treats as
+    # "what this device looked like before ReLite ever touched it", and
+    # what `relite restore --all` restores to. Explicitly recorded, never
+    # inferred from a filename like "stock" — see relite/baseline.py.
+    baseline_snapshot: str | None = None
     # Section 6: the outcome of the *last* apply attempt, independent of
     # whether it was clean enough to become `active_profile`. Lets
     # `relite status` show "you tried to apply performance and it partially
@@ -44,6 +49,7 @@ class DeviceState:
             "active_profile": self.active_profile,
             "applied_at": self.applied_at,
             "last_snapshot": self.last_snapshot,
+            "baseline_snapshot": self.baseline_snapshot,
             "last_apply_profile": self.last_apply_profile,
             "last_apply_status": self.last_apply_status,
             "last_apply_unexpected_failures": self.last_apply_unexpected_failures,
@@ -55,6 +61,7 @@ class DeviceState:
             active_profile=data.get("active_profile"),
             applied_at=data.get("applied_at"),
             last_snapshot=data.get("last_snapshot"),
+            baseline_snapshot=data.get("baseline_snapshot"),
             last_apply_profile=data.get("last_apply_profile"),
             last_apply_status=data.get("last_apply_status"),
             last_apply_unexpected_failures=data.get("last_apply_unexpected_failures", 0),
@@ -90,21 +97,45 @@ def record_profile_applied(
     profile it only partially reached. The attempt itself is always
     recorded via `last_apply_*` so `relite status` can report what
     actually happened instead of just reverting to "no profile".
+
+    Loads and updates the existing state rather than constructing a
+    fresh one — an earlier version of this function silently discarded
+    `last_snapshot`/`baseline_snapshot` on every apply, and
+    `record_snapshot_restored()` correspondingly discarded `last_apply_*`
+    on every restore. State fields track independent facts and must
+    accumulate, not overwrite each other.
     """
     is_clean_enough = integrity_status in _CLEAN_ENOUGH_TO_RECORD
-    state = DeviceState(
-        active_profile=profile if is_clean_enough else None,
-        applied_at=datetime.now(UTC).isoformat(),
-        last_apply_profile=profile,
-        last_apply_status=integrity_status,
-        last_apply_unexpected_failures=unexpected_failures,
-    )
+    state = load_state(path)
+    state.active_profile = profile if is_clean_enough else None
+    state.applied_at = datetime.now(UTC).isoformat()
+    state.last_apply_profile = profile
+    state.last_apply_status = integrity_status
+    state.last_apply_unexpected_failures = unexpected_failures
     save_state(path, state)
     return state
 
 
 def record_snapshot_restored(path: Path, snapshot_name: str) -> DeviceState:
-    state = DeviceState(active_profile=None, applied_at=None, last_snapshot=snapshot_name)
+    """Section 13 (v0.3.0): after a full baseline restore, the device is
+    no longer cleanly "on" whatever profile was last applied — restoring
+    can only be assumed to return the device to its pre-ReLite baseline,
+    not to any specific profile's exact state (the baseline predates any
+    profile). `active_profile` is explicitly cleared, not left stale.
+    """
+    state = load_state(path)
+    state.active_profile = None
+    state.applied_at = None
+    state.last_snapshot = snapshot_name
+    save_state(path, state)
+    return state
+
+
+def record_baseline_snapshot(path: Path, snapshot_name: str) -> DeviceState:
+    """Section 6: explicitly record which snapshot is the baseline —
+    never inferred from a snapshot happening to be named "stock"."""
+    state = load_state(path)
+    state.baseline_snapshot = snapshot_name
     save_state(path, state)
     return state
 

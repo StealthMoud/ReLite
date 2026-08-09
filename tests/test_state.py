@@ -8,6 +8,7 @@ from relite.state import (
     DeviceState,
     check_profile_integrity,
     load_state,
+    record_baseline_snapshot,
     record_profile_applied,
     record_snapshot_restored,
     save_state,
@@ -79,6 +80,38 @@ def test_record_profile_applied_does_not_mark_active_on_fail(tmp_path: Path):
     reloaded = load_state(path)
     assert reloaded.active_profile is None
     assert reloaded.last_apply_profile == "performance"
+
+
+def test_record_profile_applied_preserves_baseline_and_last_snapshot(tmp_path: Path):
+    path = tmp_path / "state.json"
+    record_baseline_snapshot(path, "auto-pre-relite")
+    record_snapshot_restored(path, "auto-pre-relite")
+
+    record_profile_applied(path, "performance", "PASS")
+
+    reloaded = load_state(path)
+    assert reloaded.active_profile == "performance"
+    assert reloaded.baseline_snapshot == "auto-pre-relite"
+    assert reloaded.last_snapshot == "auto-pre-relite"
+
+
+def test_record_snapshot_restored_preserves_baseline_and_clears_active_profile(tmp_path: Path):
+    path = tmp_path / "state.json"
+    record_baseline_snapshot(path, "auto-pre-relite")
+    record_profile_applied(path, "maximum", "PASS")
+
+    record_snapshot_restored(path, "auto-pre-relite")
+
+    reloaded = load_state(path)
+    assert reloaded.active_profile is None
+    assert reloaded.baseline_snapshot == "auto-pre-relite"
+    assert reloaded.last_snapshot == "auto-pre-relite"
+
+
+def test_record_baseline_snapshot_round_trips(tmp_path: Path):
+    path = tmp_path / "state.json"
+    record_baseline_snapshot(path, "stock")
+    assert load_state(path).baseline_snapshot == "stock"
 
 
 def test_load_state_missing_file_returns_default(tmp_path: Path):
