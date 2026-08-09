@@ -42,7 +42,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         )
 
         val recycler = view.findViewById<RecyclerView>(R.id.drawer_recycler)
-        recycler.layoutManager = GridLayoutManager(requireContext(), COLUMN_COUNT)
+        recycler.layoutManager = GridLayoutManager(requireContext(), app.workspaceController.gridSpec.columns)
         recycler.adapter = adapter
         recycler.setHasFixedSize(true)
 
@@ -113,7 +113,6 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     }
 
     companion object {
-        private const val COLUMN_COUNT = 4
         private const val MENU_ID_ADD_TO_HOME = 1
         private const val MENU_ID_APP_INFO = 2
     }

@@ -37,7 +37,7 @@ class FolderSheetDialog : DialogFragment() {
             onAppLongClick = { _, _ -> false },
         )
         view.findViewById<RecyclerView>(R.id.folder_recycler).apply {
-            layoutManager = GridLayoutManager(requireContext(), COLUMN_COUNT)
+            layoutManager = GridLayoutManager(requireContext(), app.workspaceController.gridSpec.columns)
             this.adapter = adapter
         }
         adapter.submitList(folderApps)
@@ -50,7 +50,6 @@ class FolderSheetDialog : DialogFragment() {
     companion object {
         private const val ARG_LABEL = "label"
         private const val ARG_COMPONENT_KEYS = "component_keys"
-        private const val COLUMN_COUNT = 4
 
         fun newInstance(label: String, componentKeys: List<String>): FolderSheetDialog =
             FolderSheetDialog().apply {

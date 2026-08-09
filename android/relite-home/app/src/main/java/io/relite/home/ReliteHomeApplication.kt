@@ -8,6 +8,7 @@ import io.relite.home.data.FileStorage
 import io.relite.home.data.LauncherGridSpec
 import io.relite.home.data.WorkspaceController
 import io.relite.home.data.WorkspaceRepository
+import io.relite.home.ui.widget.ReliteAppWidgetHost
 import io.relite.home.util.IconCache
 import java.io.File
 
@@ -32,6 +33,13 @@ class ReliteHomeApplication : Application() {
         private set
 
     lateinit var iconCache: IconCache
+        private set
+
+    // Section 48/58 (v0.4.0): exactly one AppWidgetHost for the process's
+    // lifetime — a host repeatedly created per screen would allocate a new
+    // set of widget ids/bindings instead of reusing the ones already
+    // recorded in the workspace.
+    lateinit var appWidgetHost: ReliteAppWidgetHost
         private set
 
     override fun onCreate() {
@@ -69,6 +77,8 @@ class ReliteHomeApplication : Application() {
         val launcherApps = getSystemService(LauncherApps::class.java)
         val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
         iconCache = IconCache(launcherApps, iconSizePx)
+
+        appWidgetHost = ReliteAppWidgetHost(this)
     }
 
     companion object {

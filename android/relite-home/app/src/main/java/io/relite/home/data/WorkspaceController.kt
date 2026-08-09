@@ -18,7 +18,7 @@ import java.util.UUID
  */
 class WorkspaceController(
     private val repository: WorkspaceRepository,
-    private val gridSpec: LauncherGridSpec,
+    val gridSpec: LauncherGridSpec,
 ) {
 
     private var workspace: Workspace = repository.load()
@@ -47,6 +47,13 @@ class WorkspaceController(
         val span = spanOf(item)
         if (!isFree(GridRect.of(to, span.first, span.second), excludeId = itemId)) return false
         return mutate { ws -> ws.copy(items = ws.items.map { if (it.id == itemId) withPosition(it, to) else it }) }
+    }
+
+    /** Whether [itemId] could legally move to [to] right now — used for live drag feedback before the drop is committed. */
+    fun canMoveTo(itemId: String, to: GridPosition): Boolean {
+        val item = workspace.items.find { it.id == itemId } ?: return false
+        val span = spanOf(item)
+        return isFree(GridRect.of(to, span.first, span.second), excludeId = itemId)
     }
 
     fun moveToPage(itemId: String, page: Int): Boolean {

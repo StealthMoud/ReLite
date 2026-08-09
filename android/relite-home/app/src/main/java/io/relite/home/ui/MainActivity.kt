@@ -65,6 +65,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Section 48 (v0.4.0): the process-scoped AppWidgetHost only delivers
+    // widget updates while "listening" — must start/stop with this
+    // Activity's visible lifecycle, not the Application's, or widgets would
+    // either never render or keep receiving updates while nothing is shown.
+    override fun onStart() {
+        super.onStart()
+        app.appWidgetHost.startListening()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        app.appWidgetHost.stopListening()
+    }
+
     /**
      * (Re-)builds the pager and dock from the current [io.relite.home.data.WorkspaceController]
      * state. Called on initial load and after any edit (add/remove/move,
