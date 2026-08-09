@@ -127,12 +127,23 @@ class BenchmarkResult:
     meminfo: dict[str, int]
     app_start_times: dict[str, TimingStats] = field(default_factory=dict)
     app_warm_start_times: dict[str, TimingStats] = field(default_factory=dict)
-    pss_kb: dict[str, int] = field(default_factory=dict)
+    # Section 15 (v0.4.0): PSS is a statistical measurement here too —
+    # `pss_kb`, a single int per target, used to be the only thing
+    # `run_benchmark()` populated even though `PssStats` (median/min/max/
+    # p95 across several samples) already existed as library code nobody
+    # called from the normal benchmarking path.
+    pss: dict[str, PssStats] = field(default_factory=dict)
     boot_time: TimingStats | None = None
     # Section 35: targets that produced no valid sample at all are
     # recorded here, by target label, rather than silently omitted or
     # faked as a 0ms/0kB result.
     measurement_failures: list[str] = field(default_factory=list)
+
+    @property
+    def pss_kb(self) -> dict[str, int]:
+        """Backward-compatible single-number view (the pre-v0.4.0 field
+        name/shape) — the median of each target's samples."""
+        return {label: int(round(stats.median)) for label, stats in self.pss.items()}
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -143,7 +154,8 @@ class BenchmarkResult:
             "meminfo": self.meminfo,
             "app_start_times": {k: v.to_dict() for k, v in self.app_start_times.items()},
             "app_warm_start_times": {k: v.to_dict() for k, v in self.app_warm_start_times.items()},
-            "pss_kb": self.pss_kb,
+            "pss": {k: v.to_dict() for k, v in self.pss.items()},
+            "pss_kb": self.pss_kb,  # kept for tools/scripts reading the older single-number shape
             "boot_time": self.boot_time.to_dict() if self.boot_time else None,
             "measurement_failures": self.measurement_failures,
         }
@@ -216,6 +228,21 @@ def measure_pss_settled_stats(
     samples = []
     for _ in range(runs):
         pss = measure_pss_settled(client, package, activity, settle_seconds)
+        if pss is not None:
+            samples.append(pss)
+    return PssStats(samples_kb=samples)
+
+
+def measure_pss_stats(client: AdbClient, package: str, runs: int = RECOMMENDED_MIN_RUNS) -> PssStats:
+    """`runs` PSS samples of a package's *current* running state, without
+    force-stopping/restarting it between samples — appropriate for
+    always-on components (e.g. SystemUI) where measure_pss_settled_stats's
+    cold-start methodology doesn't apply. Still reported as a real
+    PssStats rather than a single reading (section 15)."""
+    validate_runs(runs)
+    samples = []
+    for _ in range(runs):
+        pss = measure_pss(client, package)
         if pss is not None:
             samples.append(pss)
     return PssStats(samples_kb=samples)
@@ -321,13 +348,17 @@ def run_benchmark(
 
     for target in pss_targets or []:
         target_label = target["label"]
-        if "activity" in target:
-            pss = measure_pss_settled(client, target["package"], target["activity"])
-        else:
-            pss = measure_pss(client, target["package"])
-        if pss is not None:
-            result.pss_kb[target_label] = pss
-        else:
+        try:
+            if "activity" in target:
+                # RECOMMENDED_MIN_RUNS, not the (possibly much larger)
+                # app-timing `runs` count — each settled sample costs a
+                # full DEFAULT_SETTLE_SECONDS wait, unlike a timing sample.
+                result.pss[target_label] = measure_pss_settled_stats(
+                    client, target["package"], target["activity"], runs=RECOMMENDED_MIN_RUNS
+                )
+            else:
+                result.pss[target_label] = measure_pss_stats(client, target["package"])
+        except MeasurementFailedError:
             result.measurement_failures.append(f"{target_label} (pss)")
 
     return result

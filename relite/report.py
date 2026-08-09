@@ -75,11 +75,18 @@ def render_markdown(device_model: str, firmware: str, results: list[BenchmarkRes
         after = after_val.median if after_val else None
         lines.append(row(f"{app_label} warm start (median)", medians, before, after))
 
-    all_pss_labels = sorted({name for r in results for name in r.pss_kb})
+    all_pss_labels = sorted({name for r in results for name in r.pss})
     for pss_label in all_pss_labels:
-        values = [f"{r.pss_kb[pss_label]:,} kB" if pss_label in r.pss_kb else "—" for r in results]
-        before = results[0].pss_kb.get(pss_label)
-        after = results[-1].pss_kb.get(pss_label)
+        values = [
+            f"{r.pss[pss_label].median:,.0f} kB (median of {len(r.pss[pss_label].samples_kb)})"
+            if pss_label in r.pss
+            else "—"
+            for r in results
+        ]
+        before_stats = results[0].pss.get(pss_label)
+        after_stats = results[-1].pss.get(pss_label)
+        before = before_stats.median if before_stats else None
+        after = after_stats.median if after_stats else None
         lines.append(row(f"{pss_label} PSS", values, before, after))
 
     lines.append("")

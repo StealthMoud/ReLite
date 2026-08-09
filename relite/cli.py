@@ -48,8 +48,18 @@ from relite.state import (
     record_baseline_snapshot,
     record_profile_applied,
     record_snapshot_restored,
+    record_undo_result,
 )
-from relite.tuning import apply_animation_profile, probe_ram_expansion, set_private_dns
+from relite.tuning import (
+    ANIMATION_SCALE_KEYS,
+    apply_animation_profile,
+    load_tuning_change,
+    probe_ram_expansion,
+    read_animation_scale,
+    record_tuning_change,
+    restore_managed_setting,
+    set_private_dns,
+)
 from relite.validate import ValidationError, validate_local_name
 
 console = Console()
@@ -178,6 +188,17 @@ def _resolve_baseline(
             return None, warning + reconcile_note
         if validation.ownership == OwnershipStatus.DEVICE_MISMATCH:
             warning = "Recorded baseline snapshot belongs to a different physical device."
+            if allow_fallback_to_current:
+                fallback_note = " Showing a preview against current live state instead."
+                return _current_states(client, db), warning + fallback_note
+            return None, warning
+        if validation.ownership == OwnershipStatus.LEGACY_OWNERSHIP_UNKNOWN:
+            # Section 11: never silently bind a pre-v0.3.0, ownership-
+            # ambiguous snapshot to whichever device happens to be
+            # connected — that's exactly the auto-assignment bug this
+            # status exists to prevent, just at baseline-resolution time
+            # instead of directory-migration time.
+            warning = validation.detail
             if allow_fallback_to_current:
                 fallback_note = " Showing a preview against current live state instead."
                 return _current_states(client, db), warning + fallback_note
@@ -468,14 +489,19 @@ def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
             console.print(f"  - {r.package}: {r.result}")
 
     if not dry_run:
+        previous_scale = read_animation_scale(client)
         apply_animation_profile(client, profile_name)
+        target_scale = {key: load_profiles()[profile_name].animation_scale for key in ANIMATION_SCALE_KEYS}
+        record_tuning_change(local_dir / "tuning.jsonl", apply_id, previous_scale, target_scale)
         console.print("Animation scale applied.")
 
         # Section 6/14: only mark the profile "active" if a fresh live
         # integrity check — package state AND managed tuning — confirms
         # it. A partial failure must not be recorded as a clean apply.
         post_installed = list_packages(client)
-        integrity = check_profile_integrity(post_installed, db, profile_name, client=client)  # type: ignore[arg-type]
+        integrity = check_profile_integrity(
+            post_installed, db, profile_name, client=client, baseline_states=baseline_states  # type: ignore[arg-type]
+        )
         state = record_profile_applied(
             local_dir / "state.json",
             profile_name,
@@ -548,6 +574,17 @@ def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dr
             elif validation.ownership == OwnershipStatus.DEVICE_MISMATCH:
                 console.print(f"[red]{validation.detail}[/red]")
                 sys.exit(1)
+            elif validation.ownership == OwnershipStatus.LEGACY_OWNERSHIP_UNKNOWN:
+                if restore_all:
+                    # Section 11: `--all` resolves the baseline implicitly
+                    # — never silently restore from an ownership-ambiguous
+                    # pre-v0.3.0 snapshot just because it's the one on
+                    # record. An explicit `--snapshot <name>` is the user
+                    # deliberately choosing it, so that path proceeds below
+                    # with a warning instead of refusing.
+                    console.print(f"[red]{validation.detail}[/red]")
+                    sys.exit(1)
+                console.print(f"[yellow]{validation.detail}[/yellow]")
             else:
                 console.print(f"[red]Snapshot not found or unusable ({validation.status}): {snap_path}[/red]")
                 sys.exit(1)
@@ -559,7 +596,15 @@ def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dr
         # before ReLite ever ran.
         result = restore_from_snapshot(client, snap, dry_run=dry_run)
         if not dry_run:
-            record_snapshot_restored(local_dir / "state.json", snapshot_name)
+            restore_status = "OK" if not result.errors else "PARTIAL"
+            record_snapshot_restored(
+                local_dir / "state.json", snapshot_name, status=restore_status, error_count=len(result.errors)
+            )
+            if result.errors:
+                console.print(
+                    f"[red]Restore completed with {len(result.errors)} unverified change(s) — "
+                    "NOT a clean restore. See errors below.[/red]"
+                )
     else:
         result = restore_from_journal(client, local_dir / "actions.jsonl", dry_run=dry_run)
 
@@ -592,9 +637,25 @@ def undo(ctx: click.Context, dry_run: bool) -> None:
     result = restore_from_journal(client, journal_path, apply_id=apply_id, dry_run=dry_run)
     console.print(f"Undoing apply_id {apply_id}...")
     console.print(f"[green]{len(result.packages_restored)} package(s) reverted[/green]")
-    if result.errors:
-        console.print(f"[yellow]{len(result.errors)} error(s):[/yellow]")
-        for err in result.errors:
+
+    # Section 4: undo is a complete transaction — packages AND the tuning
+    # (animation scale) this same apply changed, not packages alone.
+    tuning_errors: list[str] = []
+    previous_scale = load_tuning_change(local_dir / "tuning.jsonl", apply_id)
+    if previous_scale:
+        for key, value in previous_scale.items():
+            setting_result = restore_managed_setting(client, "global", key, value, dry_run=dry_run)
+            if setting_result.verified:
+                console.print(f"[green]Tuning reverted: {key} -> {value}[/green]")
+            else:
+                tuning_errors.append(
+                    f"{key}: restore not verified (requested {value!r}, observed {setting_result.observed!r})"
+                )
+
+    all_errors = result.errors + tuning_errors
+    if all_errors:
+        console.print(f"[yellow]{len(all_errors)} error(s):[/yellow]")
+        for err in all_errors:
             console.print(f"  - {err}")
 
     if not dry_run:
@@ -602,6 +663,11 @@ def undo(ctx: click.Context, dry_run: bool) -> None:
         # whatever profile that apply had recorded — never leave a stale
         # active_profile pointing at a state that's been partially reverted.
         clear_active_profile(local_dir / "state.json")
+        # Section 6: the recorded undo outcome is a verified re-query
+        # result (packages via restore_from_journal's own live re-check,
+        # tuning via the read-back above), not just "commands exited zero".
+        undo_status = "OK" if not all_errors else "PARTIAL"
+        record_undo_result(local_dir / "state.json", apply_id, status=undo_status)
         console.print("[yellow]Active profile cleared — device state is now CUSTOM/undone, "
                       "not cleanly on any recorded profile. Run 'relite status'.[/yellow]")
 
@@ -643,7 +709,34 @@ def status(ctx: click.Context) -> None:
     installed = list_packages(client)
 
     if state.active_profile:
-        report = check_profile_integrity(installed, db, state.active_profile, client=client)  # type: ignore[arg-type]
+        # Section 3 (v0.4.0): a "keep" decision only means something once
+        # we know each package's pre-ReLite baseline state — resolve and
+        # validate the baseline *before* claiming any integrity verdict,
+        # exactly like `apply` does, rather than only checking package
+        # state (section 2's baseline-aware `desired_state_for`) blind to
+        # whether that baseline is even known/valid for this device.
+        baseline_states, baseline_warning = _resolve_baseline(
+            client, serial, local_dir, device_profile, db,
+            allow_create=False, allow_fallback_to_current=False,
+        )
+        if baseline_states is None:
+            console.print("Profile integrity:")
+            console.print(f"  [yellow]PROFILE_STATE_UNKNOWN[/yellow] — {baseline_warning}")
+            console.print(
+                "  Package state alone can't be verified without a valid baseline "
+                "('keep' means 'whatever it was before ReLite'). Run "
+                "'relite snapshot --name <n> --set-baseline' to re-establish one."
+            )
+            console.print()
+            report = None
+        else:
+            report = check_profile_integrity(
+                installed, db, state.active_profile, client=client, baseline_states=baseline_states  # type: ignore[arg-type]
+            )
+    else:
+        report = None
+
+    if report is not None:
         console.print("Profile integrity:")
         color = {"PASS": "green", "PASS_WITH_LIMITATIONS": "green", "DEGRADED": "yellow", "FAIL": "red"}
         console.print(f"  [{color[report.status]}]{report.status}[/{color[report.status]}]")
@@ -785,10 +878,83 @@ def benchmark(ctx: click.Context, label: str, runs: int, skip_apps: bool) -> Non
 
 
 @main.command()
+@click.option(
+    "--label-a", default="launcher", show_default=True, help="pss_targets label for the first launcher."
+)
+@click.option("--label-b", default="relite_home", show_default=True, help="pss_targets label for the second.")
+@click.option("--runs", default=3, show_default=True, help="Alternating samples per launcher.")
+@click.pass_context
+def benchmark_launchers(ctx: click.Context, label_a: str, label_b: str, runs: int) -> None:
+    """Section 16 (v0.4.0): controlled, single-session, alternating-order
+    A/B settled-PSS comparison between two launchers (e.g. stock vs.
+    ReLite Home) — the library-only `run_launcher_ab_benchmark()` exposed
+    as an actual command instead of something only a Python caller could
+    reach, so a controlled result can actually be produced and published
+    (section 81 of this plan / section 40 of v0.3.0's) instead of relying
+    on two separately-timed sessions.
+
+    Targets come from device.yaml's `pss_targets` (both must have an
+    `activity` — an ambient-only target like systemui can't be cold-
+    started for a fair comparison).
+    """
+    import json as _json
+
+    from relite.benchmark import RECOMMENDED_MIN_RUNS, run_launcher_ab_benchmark
+    from relite.device_metadata import load_device_metadata
+
+    if runs < 1:
+        console.print(f"[red]--runs must be >= 1, got {runs}.[/red]")
+        sys.exit(1)
+    if runs < RECOMMENDED_MIN_RUNS:
+        console.print(
+            f"[yellow]--runs {runs} is below the recommended minimum of "
+            f"{RECOMMENDED_MIN_RUNS} for a published comparison.[/yellow]"
+        )
+
+    client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    device_dir = _find_device_dir(device_profile.model)
+    if device_dir is None:
+        console.print(f"[red]No device profile for '{device_profile.model}'.[/red]")
+        sys.exit(1)
+    device_yaml_path = device_dir / "device.yaml"
+    if not device_yaml_path.exists():
+        console.print(f"[red]{device_yaml_path} not found.[/red]")
+        sys.exit(1)
+    metadata = load_device_metadata(device_yaml_path)
+    by_label = {t.label: t for t in metadata.pss_targets}
+    missing = [label for label in (label_a, label_b) if label not in by_label]
+    if missing:
+        console.print(f"[red]pss_targets missing label(s) {missing} in {device_yaml_path}.[/red]")
+        sys.exit(1)
+    target_a, target_b = by_label[label_a], by_label[label_b]
+    if target_a.activity is None or target_b.activity is None:
+        console.print("[red]Both targets need an 'activity' for a cold-start A/B comparison.[/red]")
+        sys.exit(1)
+
+    console.print(f"Running controlled A/B: {label_a} vs {label_b}, {runs} alternating sample(s) each...")
+    result = run_launcher_ab_benchmark(client, target_a.to_dict(), target_b.to_dict(), runs_each=runs)
+
+    out_dir = Path("benchmarks/results") / device_profile.model
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"ab-{label_a}-vs-{label_b}.json"
+    out_path.write_text(_json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n")
+    console.print(f"[green]Saved: {out_path}[/green]")
+
+    stats_a = result.stats_for(label_a)
+    stats_b = result.stats_for(label_b)
+    console.print(f"{label_a}: median {stats_a.median:,.0f} kB (n={len(stats_a.samples_kb)})")
+    console.print(f"{label_b}: median {stats_b.median:,.0f} kB (n={len(stats_b.samples_kb)})")
+    if stats_a.median > 0:
+        change = (stats_b.median - stats_a.median) / stats_a.median * 100
+        console.print(f"{label_b} vs {label_a}: {change:+.1f}%")
+
+
+@main.command()
 @click.pass_context
 def report(ctx: click.Context) -> None:
     """Render a Markdown/JSON/CSV comparison report from all saved benchmark results."""
-    from relite.benchmark import BenchmarkResult, TimingStats
+    from relite.benchmark import BenchmarkResult, PssStats, TimingStats
 
     client, serial = _connected_client(ctx)
     device_profile = probe_device(client, serial)
@@ -811,6 +977,13 @@ def report(ctx: click.Context) -> None:
             continue
         import json as _json
         data = _json.loads(path.read_text())
+        # Section 15: a v0.3.0-and-earlier saved result only has flat
+        # `pss_kb` (single int per label) — loaded as a one-sample
+        # PssStats rather than refusing to render older results at all.
+        if "pss" in data:
+            pss = {k: PssStats(v["samples_kb"]) for k, v in data["pss"].items()}
+        else:
+            pss = {k: PssStats([v]) for k, v in data.get("pss_kb", {}).items()}
         results.append(
             BenchmarkResult(
                 label=data["label"],
@@ -824,7 +997,7 @@ def report(ctx: click.Context) -> None:
                 app_warm_start_times={
                     k: TimingStats(v["samples_ms"]) for k, v in data.get("app_warm_start_times", {}).items()
                 },
-                pss_kb=data.get("pss_kb", {}),
+                pss=pss,
             )
         )
 
