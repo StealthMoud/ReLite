@@ -9,6 +9,7 @@ from relite.classifier import (
     ClassificationDatabase,
     PackageClassification,
     ProtectedEntry,
+    find_protected_conflicts,
     load_database,
     load_packages_yaml,
     load_protected_yaml,
@@ -129,6 +130,162 @@ def test_missing_files_produce_empty_but_valid_database(tmp_path: Path):
     assert db.entries == {}
     assert db.protected == {}
     assert db.decide("anything", "maximum") == "keep"
+
+
+def test_load_packages_yaml_rejects_invalid_confidence(tmp_path: Path):
+    path = tmp_path / "packages.yaml"
+    path.write_text(yaml.safe_dump([{"package": "com.example.foo", "confidence": "extremely-high"}]))
+    with pytest.raises(ValueError, match="confidence"):
+        load_packages_yaml(path)
+
+
+def test_load_packages_yaml_rejects_invalid_risk(tmp_path: Path):
+    path = tmp_path / "packages.yaml"
+    path.write_text(yaml.safe_dump([{"package": "com.example.foo", "risk": "extreme"}]))
+    with pytest.raises(ValueError, match="risk"):
+        load_packages_yaml(path)
+
+
+def test_load_packages_yaml_rejects_malformed_package_name(tmp_path: Path):
+    path = tmp_path / "packages.yaml"
+    path.write_text(yaml.safe_dump([{"package": "com.example; rm -rf /"}]))
+    with pytest.raises(ValueError):
+        load_packages_yaml(path)
+
+
+def test_load_packages_yaml_rejects_malformed_dependency(tmp_path: Path):
+    path = tmp_path / "packages.yaml"
+    path.write_text(
+        yaml.safe_dump([{"package": "com.example.foo", "dependencies": ["not a package name"]}])
+    )
+    with pytest.raises(ValueError, match="dependency"):
+        load_packages_yaml(path)
+
+
+def test_load_packages_yaml_rejects_duplicate_package_entries(tmp_path: Path):
+    path = tmp_path / "packages.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            [
+                {"package": "com.example.foo", "action": {"safe": "keep"}},
+                {"package": "com.example.foo", "action": {"safe": "disable"}},
+            ]
+        )
+    )
+    with pytest.raises(ValueError, match="duplicate"):
+        load_packages_yaml(path)
+
+
+def test_load_packages_yaml_rejects_non_reversible_non_keep_action(tmp_path: Path):
+    """Section 22: an action ReLite can't reliably reverse doesn't belong
+    in a normal profile."""
+    path = tmp_path / "packages.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "package": "com.example.foo",
+                    "action": {"maximum": "uninstall-user"},
+                    "rollback": {"supported": False},
+                }
+            ]
+        )
+    )
+    with pytest.raises(ValueError, match="rollback"):
+        load_packages_yaml(path)
+
+
+def test_load_packages_yaml_allows_non_reversible_keep_only_entry(tmp_path: Path):
+    """rollback.supported=False is fine as long as every action is keep."""
+    path = tmp_path / "packages.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            [{"package": "com.example.foo", "action": {"safe": "keep"}, "rollback": {"supported": False}}]
+        )
+    )
+    entries = load_packages_yaml(path)
+    assert entries["com.example.foo"].rollback_supported is False
+
+
+def test_load_packages_yaml_rejects_non_monotonic_action_map(tmp_path: Path):
+    """Section 24: safe: disable, performance: keep is a policy-drift bug
+    unless explicitly documented as intentional."""
+    path = tmp_path / "packages.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            [{"package": "com.example.foo", "action": {"safe": "disable", "performance": "keep"}}]
+        )
+    )
+    with pytest.raises(ValueError, match="non-monotonic"):
+        load_packages_yaml(path)
+
+
+def test_load_packages_yaml_allows_documented_monotonicity_exception(tmp_path: Path):
+    path = tmp_path / "packages.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "package": "com.example.foo",
+                    "action": {"safe": "disable", "performance": "keep"},
+                    "monotonicity_exception": "re-enabled in performance because X",
+                }
+            ]
+        )
+    )
+    entries = load_packages_yaml(path)
+    assert entries["com.example.foo"].action_for("performance") == "keep"
+
+
+def test_load_packages_yaml_allows_monotonic_increase(tmp_path: Path):
+    path = tmp_path / "packages.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "package": "com.example.foo",
+                    "action": {"safe": "keep", "performance": "disable", "maximum": "uninstall-user"},
+                }
+            ]
+        )
+    )
+    entries = load_packages_yaml(path)  # must not raise
+    assert entries["com.example.foo"].action_for("maximum") == "uninstall-user"
+
+
+def test_find_protected_conflicts_detects_contradiction():
+    db = ClassificationDatabase(
+        entries={
+            "com.example.core": PackageClassification(
+                package="com.example.core", action={"safe": "disable"}
+            )
+        },
+        protected={"com.example.core": ProtectedEntry(package="com.example.core")},
+    )
+    conflicts = find_protected_conflicts(db)
+    assert len(conflicts) == 1
+    assert "com.example.core" in conflicts[0]
+
+
+def test_find_protected_conflicts_clean_when_protected_is_keep_only():
+    db = ClassificationDatabase(
+        entries={
+            "com.example.core": PackageClassification(
+                package="com.example.core", action={"safe": "keep"}
+            )
+        },
+        protected={"com.example.core": ProtectedEntry(package="com.example.core")},
+    )
+    assert find_protected_conflicts(db) == []
+
+
+def test_load_database_raises_on_protected_conflict(tmp_path: Path):
+    (tmp_path / "packages.yaml").write_text(
+        yaml.safe_dump([{"package": "com.example.core", "action": {"safe": "disable"}}])
+    )
+    (tmp_path / "protected-packages.yaml").write_text(yaml.safe_dump({"protected": ["com.example.core"]}))
+    with pytest.raises(ValueError, match="conflict"):
+        load_database(tmp_path)
 
 
 def test_real_rmx5303_database_loads_and_protects_systemui():
