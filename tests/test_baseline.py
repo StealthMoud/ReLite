@@ -41,6 +41,36 @@ def test_check_ownership_firmware_different():
     assert check_ownership(snap, current) == OwnershipStatus.FIRMWARE_DIFFERENT
 
 
+def test_check_ownership_prefers_device_key_over_raw_serial(tmp_path: Path):
+    """A sanitized snapshot has a redacted device.serial but an intact
+    device_key — ownership must still resolve correctly using it."""
+    device = _device()
+    snap = Snapshot(
+        schema=2, name="stock", created_at="2026-08-10T00:00:00Z",
+        device=DeviceProfile(serial="[REDACTED]", props=device.props),
+        packages={}, settings={}, device_key="RMX5303-abc123",
+    )
+    assert check_ownership(snap, device, current_device_key="RMX5303-abc123") == OwnershipStatus.MATCH
+
+
+def test_check_ownership_device_key_mismatch_even_with_matching_serial(tmp_path: Path):
+    device = _device()
+    snap = Snapshot(
+        schema=2, name="stock", created_at="2026-08-10T00:00:00Z",
+        device=device, packages={}, settings={}, device_key="RMX5303-old-salt-digest",
+    )
+    result = check_ownership(snap, device, current_device_key="RMX5303-new-salt-digest")
+    assert result == OwnershipStatus.DEVICE_MISMATCH
+
+
+def test_check_ownership_falls_back_to_serial_when_no_device_key(tmp_path: Path):
+    """A snapshot predating device_key (or a caller not supplying
+    current_device_key) still gets a best-effort raw-serial comparison."""
+    device = _device()
+    snap = _snapshot(device)  # no device_key set
+    assert check_ownership(snap, device) == OwnershipStatus.MATCH
+
+
 def test_validate_baseline_missing_file(tmp_path: Path):
     result = validate_baseline(tmp_path / "does-not-exist.json", _device())
     assert result.status == "missing"

@@ -110,6 +110,28 @@ def test_baseline_states_uses_inventory_for_package_missing_from_managed_states(
     assert states["com.example.optional"] == PackageState.PRESENT_DISABLED
 
 
+def test_save_with_sanitize_preserves_device_key(tmp_path: Path):
+    """Real-device finding (RMX5303, 2026-08-10): a 16-hex-char ADB
+    serial matches the sanitizer's android_id_hex pattern and a 20-hex
+    device_key matches its bearer_token pattern, so a naive save() would
+    mangle device_key and silently break ownership validation for every
+    snapshot ever taken with the (default) sanitize=True."""
+    snap = Snapshot(
+        schema=2,
+        name="stock",
+        created_at="2026-08-10T00:00:00Z",
+        device=_device(),
+        packages={},
+        settings={},
+        device_key="RMX5303-abc123def456789012ab",
+    )
+    path = tmp_path / "stock.snapshot.json"
+    snap.save(path, sanitize=True)
+
+    loaded = Snapshot.load(path)
+    assert loaded.device_key == "RMX5303-abc123def456789012ab"
+
+
 def test_load_rejects_unsupported_schema(tmp_path: Path):
     path = tmp_path / "bad.snapshot.json"
     path.write_text(

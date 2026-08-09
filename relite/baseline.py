@@ -40,20 +40,38 @@ class BaselineValidation:
         return self.status == "valid" and self.ownership == OwnershipStatus.MATCH
 
 
-def check_ownership(snapshot: Snapshot, current_device: DeviceProfile) -> OwnershipStatus:
+def check_ownership(
+    snapshot: Snapshot, current_device: DeviceProfile, current_device_key: str = ""
+) -> OwnershipStatus:
     """Section 5: a snapshot must be bound to the physical device it came
     from, not merely "a device with a matching model name" — and even a
     genuine match should flag an OTA-driven firmware change rather than
     silently trusting a baseline that may no longer reflect reality.
+
+    Prefers comparing the pseudonymous `device_key` (section 18) when
+    both sides have one — `snapshot.device.serial` is redacted by the
+    privacy sanitizer on save (see snapshot.py's `save()` docstring), so
+    it's not reliably comparable for any snapshot saved with
+    `sanitize=True`. Falls back to comparing the raw serial for a
+    snapshot taken before `device_key` existed, or when the caller
+    doesn't supply `current_device_key` — best-effort, not authoritative,
+    for that older data.
     """
-    if snapshot.device.model != current_device.model or snapshot.device.serial != current_device.serial:
+    if snapshot.device.model != current_device.model:
+        return OwnershipStatus.DEVICE_MISMATCH
+    if snapshot.device_key and current_device_key:
+        if snapshot.device_key != current_device_key:
+            return OwnershipStatus.DEVICE_MISMATCH
+    elif snapshot.device.serial != current_device.serial:
         return OwnershipStatus.DEVICE_MISMATCH
     if snapshot.device.fingerprint != current_device.fingerprint:
         return OwnershipStatus.FIRMWARE_DIFFERENT
     return OwnershipStatus.MATCH
 
 
-def validate_baseline(path: Path, current_device: DeviceProfile) -> BaselineValidation:
+def validate_baseline(
+    path: Path, current_device: DeviceProfile, current_device_key: str = ""
+) -> BaselineValidation:
     """Section 7: "the snapshots/ directory exists" is not "a valid
     rollback baseline exists". Checks existence, parseability, schema
     support, and device ownership, in that order.
@@ -73,7 +91,7 @@ def validate_baseline(path: Path, current_device: DeviceProfile) -> BaselineVali
     if raw_snapshot.schema not in SUPPORTED_SCHEMAS:
         return BaselineValidation(status="unsupported_schema", detail=f"schema {raw_snapshot.schema}")
 
-    ownership = check_ownership(raw_snapshot, current_device)
+    ownership = check_ownership(raw_snapshot, current_device, current_device_key)
     if ownership != OwnershipStatus.MATCH:
         return BaselineValidation(
             status="ownership_error",

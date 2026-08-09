@@ -57,6 +57,14 @@ class Snapshot:
     # classification database) falls back to deriving the same
     # information from the full `packages` inventory instead.
     managed_package_states: dict[str, str] = field(default_factory=dict)
+    # Section 18: the pseudonymous per-device key (relite.device_identity),
+    # not the raw serial — `device.serial` is redacted by the privacy
+    # sanitizer on save() (it happens to match the android_id_hex
+    # pattern for a 16-hex-character ADB serial), which broke ownership
+    # validation for any snapshot taken with sanitize=True before this
+    # field existed. Set by the caller (relite/cli.py), since computing
+    # it requires the local salt file, not just the DeviceProfile.
+    device_key: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,6 +72,7 @@ class Snapshot:
             "name": self.name,
             "created_at": self.created_at,
             "device": self.device.to_dict(),
+            "device_key": self.device_key,
             "packages": {name: pkg.to_dict() for name, pkg in self.packages.items()},
             "settings": self.settings,
             "managed_package_states": self.managed_package_states,
@@ -79,6 +88,7 @@ class Snapshot:
             name=data["name"],
             created_at=data["created_at"],
             device=DeviceProfile.from_dict(data["device"]),
+            device_key=data.get("device_key", ""),
             packages={
                 name: PackageInfo.from_dict(pkg) for name, pkg in data.get("packages", {}).items()
             },
@@ -116,7 +126,16 @@ class Snapshot:
     def save(self, path: Path, *, sanitize: bool = True) -> None:
         data = self.to_dict()
         if sanitize:
+            # device_key is a pseudonymous identifier by construction
+            # (relite/device_identity.py — HMAC-SHA256 of the serial
+            # keyed by a local salt), not something the general sanitizer
+            # needs to protect — but its hex form happens to match the
+            # generic bearer_token/android_id_hex heuristics, which would
+            # mangle it and silently break ownership validation. Save it
+            # verbatim; nothing else in this dict gets that treatment.
+            device_key_value = data.get("device_key", "")
             data = sanitize_dict(data)
+            data["device_key"] = device_key_value
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
@@ -137,7 +156,12 @@ def _read_settings(scoped: AdbClient, namespace: str) -> dict[str, str]:
 
 
 def take_snapshot(
-    client: AdbClient, serial: str, name: str, db: ClassificationDatabase | None = None
+    client: AdbClient,
+    serial: str,
+    name: str,
+    db: ClassificationDatabase | None = None,
+    *,
+    device_key: str = "",
 ) -> Snapshot:
     """Take a full point-in-time snapshot. When `db` is supplied (the
     device's classification database), `managed_package_states` is
@@ -146,6 +170,10 @@ def take_snapshot(
     snapshot is still complete (full package inventory + settings) but
     `managed_package_states` is left empty; `Snapshot.baseline_states()`
     derives the same information from the inventory on demand either way.
+
+    `device_key` (the pseudonymous per-device identifier — section 18)
+    is the caller's responsibility to compute, since doing so needs the
+    local salt file, not just this function's inputs.
     """
     scoped = AdbClient(serial=serial, adb_path=client.adb_path, runner=client.runner)
     device = probe_device(client, serial)
@@ -160,6 +188,7 @@ def take_snapshot(
         name=name,
         created_at=datetime.now(UTC).isoformat(),
         device=device,
+        device_key=device_key,
         packages=packages,
         settings=settings,
         managed_package_states=managed_package_states,
