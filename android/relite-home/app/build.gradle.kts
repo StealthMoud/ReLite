@@ -27,8 +27,20 @@ val releaseStoreFile = signingProperty("storeFile", "RELITE_RELEASE_STORE_FILE")
 val releaseStorePassword = signingProperty("storePassword", "RELITE_RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = signingProperty("keyAlias", "RELITE_RELEASE_KEY_ALIAS")
 val releaseKeyPassword = signingProperty("keyPassword", "RELITE_RELEASE_KEY_PASSWORD")
-val hasReleaseSigningCredentials =
-    releaseStoreFile != null && releaseStorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null
+val presentCredentialCount = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+    .count { it != null }
+val hasReleaseSigningCredentials = presentCredentialCount == 4
+
+// Section 32 (v0.3.0): a partially-configured signing setup must fail
+// loudly, not silently fall back to an unsigned release build that
+// scripts/package-release.sh could then mislabel — configuration
+// guessing is exactly what let that happen before.
+if (presentCredentialCount in 1..3) {
+    throw GradleException(
+        "Incomplete release-signing configuration: $presentCredentialCount of 4 credentials " +
+            "present (storeFile/storePassword/keyAlias/keyPassword). Set all four or none.",
+    )
+}
 
 android {
     namespace = "io.relite.home"

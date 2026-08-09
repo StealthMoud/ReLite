@@ -33,28 +33,51 @@ malicious builds as authentic.
 If none of the four credentials are present, no `release` signingConfig
 is registered at all; `./gradlew assembleRelease` still succeeds
 (minified, R8-optimized) but produces an **unsigned** APK that cannot
-be installed as-is. `scripts/package-release.sh` handles this
-automatically: with credentials present it builds and packages a
-signed `-release.apk`; without them it falls back to the standard
-Android **debug**-signed build (auto-generated per machine, well-known,
-never intended to prove publisher identity) and names the artifact
-`ReLite-Home-vX.Y.Z-debug.apk` — honest about what it is. A debug build
-installs and runs identically to a release build; what it lacks is a
-verifiable publisher signature (R8 minification is the `release` build
-type either way).
+be installed as-is. **Exactly one or two or three of the four present
+is a hard build failure** (`GradleException`, section 32 of the v0.3.0
+plan) — a partially-configured signing setup must never silently fall
+back to an unsigned build that then gets mislabeled as signed.
+
+`scripts/package-release.sh` never infers signed status from whether
+credentials were configured beforehand — after building, it runs
+`scripts/release_manifest.py`, which calls the real Android
+`apksigner verify --print-certs` against the actual built APK and
+classifies it from that report (`release` / `debug` / `unsigned`; the
+last is a hard error, packaging refuses to proceed). With credentials
+present it builds and packages a verified-signed `-release.apk`;
+without them it falls back to the standard Android **debug**-signed
+build (auto-generated per machine, well-known, never intended to prove
+publisher identity) and names the artifact `ReLite-Home-vX.Y.Z-debug.apk`
+— honest about what it is, confirmed by `apksigner` rather than
+assumed. A debug build installs and runs identically to a release
+build; what it lacks is a verifiable publisher signature (R8
+minification is the `release` build type either way).
+
+If a real ReLite release certificate is ever established, its **public**
+SHA-256 digest (never the private key) can be committed to
+`docs/release-signing-cert.sha256`; `release_manifest.py` then refuses
+to classify any `-release.apk` as signed unless its actual certificate
+matches that pin (section 33) — packaging fails loudly instead of
+publishing an artifact signed with an unexpected key.
 
 ## Packaging a release
 
 ```bash
-./scripts/package-release.sh 0.2.0
+./scripts/package-release.sh 0.3.0
 ```
 
 Produces:
 
 ```text
-dist/ReLite-Home-v0.2.0-debug.apk
-dist/ReLite-Home-v0.2.0-debug.apk.sha256
+dist/ReLite-Home-v0.3.0-debug.apk
+dist/ReLite-Home-v0.3.0-debug.apk.sha256
+dist/release-manifest.json
 ```
+
+`release-manifest.json` (section 34) records version, git commit, APK
+name/SHA-256/signed-status/certificate-DN, the CLI wheel's
+name/SHA-256 if built alongside it, and a build timestamp — no secret
+values.
 
 `dist/` is gitignored — these are release *artifacts*, attached to a
 GitHub Release, not committed to the repository.
