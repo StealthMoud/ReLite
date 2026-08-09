@@ -16,12 +16,14 @@ Recommended profile: performance
 
 Full methodology and every number's provenance:
 `benchmarks/results/RMX5303/v0.2.0.md` (device/profile numbers unchanged
-from v0.1.0; the launcher PSS comparison was re-measured for v0.2.0 —
+since v0.1.0; the launcher PSS comparison was re-measured for v0.2.0 —
 see that report for why the gap widened between sessions and what that
-does and doesn't prove). These are real measurements from a physical
-unit, not projections — see `docs/safety.md` and
-`benchmarks/methodology.md` for how they were produced and what they
-don't claim.
+does and doesn't prove). v0.3.0 was a correctness/packaging/security
+release with no package-action or launcher-UI changes, so these numbers
+are still current and were not re-measured — see CHANGELOG.md's v0.3.0
+entry. These are real measurements from a physical unit, not
+projections — see `docs/safety.md` and `benchmarks/methodology.md` for
+how they were produced and what they don't claim.
 
 ReLite works over ADB, without root, without an unlocked bootloader, and
 without a custom recovery — every change it makes is reversible. First
@@ -98,7 +100,7 @@ See `docs/recovery.md` for the full recovery ladder, and
 `docs/RMX5303-validation-checklist.md` for what's worth manually
 double-checking on your specific phone/apps after applying a profile.
 
-## Real RMX5303 results (v0.2.0, 2026-08-09)
+## Real RMX5303 results (last re-measured v0.2.0, 2026-08-09)
 
 Validated end-to-end against a physical RMX5303EEA unit (firmware
 `AP3A.240905.015.A2`, Android 15). Full methodology and every number's
@@ -112,15 +114,18 @@ generated table at `devices/realme/RMX5303/PACKAGES.md`.
 | Camera cold start (median) | 724 ms | 629 ms | 612 ms | 596 ms |
 | Settings cold start (median) | 1177 ms | 1170 ms | 544 ms | 583 ms |
 
-Device/profile numbers are unchanged from v0.1.0 (no package action
-changed this pass). All four profiles were applied and verified stable
-on this unit across multiple independent validation passes (boot
-completes, SystemUI/Settings/Camera/telephony/Bluetooth intact, no
-crashes in logcat), including a complete restore round-trip re-run
-against the rewritten v0.2.0 restore/apply engine that reproduced the
-same package set. `performance` is the ReLite-recommended default for
-this device — see `docs/profiles.md` for the full inheritance model and
-what qualifies a package for each level.
+Device/profile numbers are unchanged from v0.1.0 (no package action has
+changed across v0.2.0 or v0.3.0). All four profiles were applied and
+verified stable on this unit across multiple independent validation
+passes (boot completes, SystemUI/Settings/Camera/telephony/Bluetooth
+intact, no crashes in logcat), including a complete restore round-trip.
+v0.3.0 additionally validated the profile engine's bidirectionality
+live — `performance -> maximum -> performance` with **no intermediate
+restore step**, `relite status` reporting a clean, verified result both
+times (this specific direct transition silently failed before v0.3.0's
+planner rewrite; see CHANGELOG.md). `performance` is the
+ReLite-recommended default for this device — see `docs/profiles.md` for
+the full inheritance model and what qualifies a package for each level.
 
 ReLite Home, installed and tested on this same unit: settled PSS
 **53,957 kB, ~56.2% lower** than the stock launcher's 123,310 kB

@@ -93,19 +93,24 @@ pytest (relite/)
 ruff check
 mypy
 ./gradlew testDebugUnitTest (ReLite Home)
-./gradlew assembleDebug (ReLite Home)
+./gradlew lint (ReLite Home)
+./gradlew assembleDebug assembleRelease (ReLite Home)
 shellcheck scripts/*.sh benchmarks/scripts/*.sh
-profile schema validation
+profile schema validation (relite.profiles.load_profiles)
+device.yaml schema validation (relite.device_metadata.load_device_metadata)
 generated package docs up to date (scripts/generate_package_docs.py)
+relite/resources/ in sync with profiles/ and devices/ (scripts/sync_resources.py)
+wheel builds and installs cleanly outside the checkout
 secret / identifier scan
+version consistency (pyproject/relite.__version__/Android versionName/CHANGELOG)
 working tree clean
 ```
 
 ## Tagging
 
 ```bash
-git tag -a v0.2.0 -m "ReLite v0.2.0"
-git push origin v0.2.0   # only if/when you intend to publish — see below
+git tag -a v0.3.0 -m "ReLite v0.3.0"
+git push origin v0.3.0   # only if/when you intend to publish — see below
 ```
 
 Pushing a tag (and any `gh release create`) publishes to a remote and is
@@ -124,6 +129,7 @@ the loop.
   section — the CLI itself is installed from source via
   `./scripts/bootstrap.sh`, not a separate package, until a PyPI release
   is set up; see `docs/development.md`)
-- Link to `benchmarks/results/RMX5303/v0.2.0.md`
+- Link to `benchmarks/results/RMX5303/v0.2.0.md` (numbers unchanged in
+  v0.3.0 — a correctness/packaging release, not a new benchmark pass)
 - Link to `CHANGELOG.md`'s entry for this version
 - Rollback instructions: `docs/recovery.md`

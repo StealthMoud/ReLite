@@ -7,7 +7,11 @@ with ~8 GB of RAM; ReLite Home itself makes no fixed RAM assumption —
 actual RAM varies by SKU/region and is read from the device, not
 hardcoded anywhere in this module.
 
-## What's actually working (v0.2.0)
+## What's actually working (v0.3.0)
+
+Unchanged from v0.2.0 — v0.3.0 was correctness-focused (atomic
+persistence, stable menu handling) rather than new-feature work; see
+CHANGELOG.md for what actually changed.
 
 - **Home workspace** — paged grid (`ViewPager2` + `HomePageFragment`),
   page indicator, dock with a dedicated "open drawer" button.
