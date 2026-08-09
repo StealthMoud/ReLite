@@ -8,6 +8,160 @@ milestones (0.1, 0.2, 1.0).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-09
+
+A correctness- and packaging-focused release: the profile engine is now
+genuinely bidirectional and baseline-aware, the CLI is a self-contained
+installable wheel, release signing is cryptographically verified rather
+than assumed, and benchmark methodology no longer fabricates failed
+samples. ReLite Home gets targeted correctness fixes (atomic
+persistence, stable menu handling); the interactive editable-workspace
+UI (drag-to-move, dock/folder editing dialogs, live widget rendering,
+theming, wallpaper) remains `WorkspaceController`-level only, unchanged
+from v0.2.0 — not attempted this pass, and not claimed as done.
+
+### Fixed (correctness)
+
+- Profile transitions only worked "loosening from stock" — a package
+  `maximum` uninstalled was invisible to the old planner
+  (`list_packages()`-only) when moving back toward `safe`/`performance`,
+  so `maximum -> performance` silently failed to restore it.
+  `relite/profile_planner.py` computes each package's desired state from
+  an explicit pre-ReLite baseline plus the target profile's action —
+  `keep` means "whatever the baseline was", never "must be enabled" —
+  and transitions now work directly in both directions. Verified live on
+  the RMX5303: `performance -> maximum -> performance` with no
+  intermediate restore, `relite status` confirming a clean result both
+  times.
+- Snapshot schema bumped to v2 with an explicit `managed_package_states`
+  baseline map; v1 snapshots still load, falling back to deriving the
+  same baseline from the full package inventory.
+- Snapshots are now bound to the physical device they came from
+  (`relite/baseline.py`) — checked against device model, a pseudonymous
+  device key, and firmware fingerprint, distinguishing "wrong device"
+  from "same device, OTA since this was taken" instead of silently
+  trusting a possibly-stale baseline.
+- `state.json`'s `record_profile_applied()`/`record_snapshot_restored()`
+  each used to construct a fresh `DeviceState`, silently discarding
+  whatever the other had recorded. Both now load-modify-save.
+  `baseline_snapshot` is explicitly recorded rather than inferred from a
+  snapshot happening to be named "stock"; `restore --all` uses it.
+- `apply_plan()`/`build_plan()` replaced by transitions executed
+  directly from the same planner `relite plan` renders — there is no
+  longer a second, independently-derived way to decide a package's
+  command. Journal bumped to schema v3 (transaction `apply_id`,
+  baseline/requested/observed state); rollback goes through the
+  verified `package_state` engine instead of replaying a stored raw
+  command string, with old-journal-string fallback only when a record
+  genuinely lacks the newer explicit state fields. New `relite undo`
+  reverses only the most recent apply transaction, distinct from
+  `relite restore --all`'s return-to-baseline.
+- Profile integrity now verifies managed tuning (animation scale) via a
+  live device, not package state alone — a failed `settings put` can no
+  longer hide behind an otherwise-clean package report.
+- `list_packages()` used `pm` output regardless of each query's exit
+  code; a failed/offline query silently became an empty package set
+  (every profile's plan then looked like "already matches, nothing to
+  do"). Now raises `PackageInventoryError` on any failed query or a
+  violated set invariant (e.g. disabled ⊄ all).
+- `AdbClient.require_single_device()` returned the requested `--serial`
+  unconditionally as soon as *any* device was usable, without checking
+  that serial was actually connected.
+- ReLite Home: `FileStorage` used plain `File.writeText()` — a process
+  death mid-write could leave `workspace.json` truncated with no
+  fallback. Now uses `android.util.AtomicFile`. A corrupt/unreadable
+  workspace file is preserved to a sibling `.corrupt` file before
+  falling back to an empty in-memory workspace, instead of being
+  silently destroyed the moment the next edit triggers a save.
+- ReLite Home: long-press menus compared `menuItem.title` against a
+  localized string to decide the tapped action; now uses stable integer
+  menu item IDs.
+- `devices/realme/RMX5303/device.yaml`'s `bootloader_investigated: false`
+  / `gsi_investigated: false` predated research that had already
+  happened; replaced with structured verdicts taken directly from
+  `research/bootloader.md`/`research/treble-gsi.md`'s existing
+  conclusions.
+
+### Fixed (security)
+
+- The pseudonymous per-device key (`relite/device_identity.py`) was
+  described as "non-reversible" but was a bare `sha256(serial)[:8]` — an
+  unsalted hash of a short, structured ADB serial is realistically
+  brute-forceable offline. Now HMAC-SHA256 keyed by a random per-install
+  salt (`.local/.device_salt`, gitignored). Found while validating
+  snapshot ownership: the privacy sanitizer's `android_id_hex`/
+  `bearer_token` patterns happened to match a 16-hex-char serial and a
+  20-hex-char device key respectively, mangling both on save — both are
+  now exempted from the general sanitizer pass (they're pseudonymous by
+  construction, not something that pass needs to protect).
+- User-controlled local artifact names (snapshot names) validated
+  against a conservative charset before being used to build a path under
+  `.local/` — `relite snapshot --name ../../escape` can't do what it says.
+- Release-signing status is now verified cryptographically
+  (`apksigner verify` against the actual built APK), not inferred from
+  whether credentials were configured at build time. A partially-
+  configured signing setup (1-3 of 4 credentials) now hard-fails the
+  Gradle build instead of silently producing an unsigned release build
+  something downstream could mislabel.
+
+### Added
+
+- `relite/data_paths.py` + `relite/resources/` make the installed wheel
+  self-contained: `RELITE_DATA_DIR` (or `--data-dir`) > a source
+  checkout's `profiles/`/`devices/` > packaged data via
+  `importlib.resources`. Verified end-to-end — built the wheel,
+  installed it into a venv that never saw the checkout, confirmed CLI
+  and RMX5303 package-database loading both work from `/tmp`. Previously
+  a release blocker (a `pip install`'d wheel had no built-in data at all
+  outside a checkout).
+- `scripts/release_manifest.py` generates `dist/release-manifest.json`
+  (version, git commit, APK/wheel name+SHA-256, verified signed status,
+  certificate DN, build timestamp); optional certificate pinning via
+  `docs/release-signing-cert.sha256` (public digest only).
+- Stricter `packages.yaml` schema validation: confidence/risk enums,
+  dependency entries validated as real package names, duplicate package
+  entries rejected, and profile-monotonicity checking (an action map may
+  not get less aggressive from safe to performance to maximum unless
+  explicitly documented via `monotonicity_exception`).
+  `rollback.supported: false` combined with any non-keep action is now a
+  schema error. `find_protected_conflicts()` flags a package that's both
+  protected and has a non-keep classified action.
+- `relite/device_metadata.py` validates `device.yaml` through a real
+  loader (model/support_status enum, every benchmark/PSS target's
+  package+component name) instead of a bare `yaml.safe_load()`.
+- Benchmark correctness: `TimingStats`/`PssStats` raise
+  `MeasurementFailedError` when constructed with zero samples instead of
+  silently substituting a fabricated `0.0` — a genuine `TotalTime: 0` is
+  still recorded as a valid sample, only "no sample at all" is treated
+  as a failure. `--runs`/`runs` reject non-positive values.
+  `PssStats`/`measure_pss_settled_stats()` make PSS a proper statistical
+  measurement (median of N samples) instead of one reading.
+  `run_launcher_ab_benchmark()` adds a controlled, single-session,
+  alternating-order comparison mode between two launcher targets.
+- CI: wheel build + fresh-venv-outside-checkout install test,
+  `relite/resources/` freshness check, `device.yaml`/profile schema
+  validation through real loaders, and a release-packaging test that
+  asserts the no-secrets path produces an honestly-labeled debug
+  artifact.
+
+### Notes
+
+- ReLite Home's interactive editable-workspace UI (drag-to-reposition,
+  dock editing, folder creation/editing, live widget rendering, layout
+  import/export, wallpaper, theming, accessibility pass, insets
+  handling) is unchanged from v0.2.0 — `WorkspaceController` supports
+  all of it at the domain-logic level; none of the interactive UI for it
+  was built this pass. Neither were structured package-change events,
+  main-thread listener dispatch, or lifecycle-safe fragment callback
+  restoration.
+- Device/profile package counts, cold-start numbers, and ReLite Home PSS
+  are unchanged from v0.2.0 — no package action changed, and the launcher
+  UI work that would justify re-measuring wasn't done this pass.
+- Manual, human-only validation (calls, SMS, GPS, fingerprint, Bluetooth
+  audio, banking apps) unchanged — see
+  `docs/RMX5303-validation-checklist.md`. Screenshots remain blocked on
+  the device's lock screen (owner PIN required; not attempted).
+
 ## [0.2.0] — 2026-08-09
 
 Correctness, security, and multi-device-safety hardening of the v0.1.0
