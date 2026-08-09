@@ -112,9 +112,14 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 is WorkspaceItem.WidgetIcon -> Unit
             }
         }
-        // Widgets manage their own touch input (scrolling lists, buttons, etc.) —
-        // only apps/folders support the long-press-to-drag gesture below.
-        if (item is WorkspaceItem.WidgetIcon) return
+        // Widgets manage their own touch input (scrolling lists, buttons, etc.), so
+        // they don't get the drag-via-ACTION_MOVE gesture below — but they still need
+        // a long-press entry point into the same Remove/Resize/Move-to-page menu, or
+        // those actions would be permanently unreachable for every placed widget.
+        if (item is WorkspaceItem.WidgetIcon) {
+            cellView.setOnLongClickListener { showLongPressMenu(app, item, cellView); true }
+            return
+        }
 
         var dragArmed = false
         var downRawX = 0f
@@ -214,6 +219,9 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 menu.add(Menu.NONE, MENU_ID_ADD_TO_FOLDER, Menu.NONE, R.string.action_add_to_folder)
                 menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             }
+            if (item is WorkspaceItem.WidgetIcon) {
+                menu.add(Menu.NONE, MENU_ID_RESIZE_WIDGET, Menu.NONE, R.string.action_resize_widget)
+            }
             setOnMenuItemClickListener { menuItem ->
                 when (menuItem.itemId) {
                     MENU_ID_REMOVE_FROM_HOME -> {
@@ -237,6 +245,10 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                     }
                     MENU_ID_MOVE_TO_PAGE -> {
                         showMoveToPageDialog(app, item)
+                        true
+                    }
+                    MENU_ID_RESIZE_WIDGET -> {
+                        if (item is WorkspaceItem.WidgetIcon) showResizeDialog(app, item)
                         true
                     }
                     MENU_ID_ADD_TO_FOLDER -> {
@@ -265,6 +277,53 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     private fun openAppInfo(packageName: String) {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
         startActivity(intent)
+    }
+
+    /**
+     * Section 53-55: simple, reliable +/- controls rather than animated drag
+     * handles — each tap validates the candidate rectangle (bounds + no
+     * collision) via WorkspaceController.resizeWidget before committing, so
+     * an invalid tap is simply rejected rather than silently clamped.
+     */
+    private fun showResizeDialog(app: ReliteHomeApplication, widget: WorkspaceItem.WidgetIcon) {
+        val view = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_widget_resize, null)
+        val sizeLabel = view.findViewById<TextView>(R.id.resize_current_size)
+        var spanColumns = widget.spanColumns
+        var spanRows = widget.spanRows
+
+        fun refreshLabel() {
+            sizeLabel.text = getString(R.string.resize_current_size, spanColumns, spanRows)
+        }
+        fun applyResize(newColumns: Int, newRows: Int) {
+            if (app.workspaceController.resizeWidget(widget.id, newColumns, newRows)) {
+                spanColumns = newColumns
+                spanRows = newRows
+                refreshLabel()
+                onWorkspaceChanged?.invoke()
+            } else {
+                Toast.makeText(requireContext(), R.string.resize_no_room, Toast.LENGTH_SHORT).show()
+            }
+        }
+        refreshLabel()
+
+        view.findViewById<View>(R.id.resize_width_plus).setOnClickListener {
+            applyResize((spanColumns + 1).coerceAtMost(app.workspaceController.gridSpec.columns), spanRows)
+        }
+        view.findViewById<View>(R.id.resize_width_minus).setOnClickListener {
+            applyResize((spanColumns - 1).coerceAtLeast(1), spanRows)
+        }
+        view.findViewById<View>(R.id.resize_height_plus).setOnClickListener {
+            applyResize(spanColumns, (spanRows + 1).coerceAtMost(app.workspaceController.gridSpec.rows))
+        }
+        view.findViewById<View>(R.id.resize_height_minus).setOnClickListener {
+            applyResize(spanColumns, (spanRows - 1).coerceAtLeast(1))
+        }
+
+        android.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.action_resize_widget)
+            .setView(view)
+            .setPositiveButton(R.string.done, null)
+            .show()
     }
 
     /** Section 19: accessibility/precision fallback to hover-based cross-page drag — always available. */
@@ -320,6 +379,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         private const val MENU_ID_PIN_TO_DOCK = 3
         private const val MENU_ID_ADD_TO_FOLDER = 4
         private const val MENU_ID_MOVE_TO_PAGE = 5
+        private const val MENU_ID_RESIZE_WIDGET = 6
 
         fun newInstance(pageIndex: Int): HomePageFragment = HomePageFragment().apply {
             arguments = Bundle().apply { putInt(ARG_PAGE_INDEX, pageIndex) }

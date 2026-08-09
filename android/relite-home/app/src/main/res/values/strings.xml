@@ -28,4 +28,12 @@
     <string name="action_remove_page">Remove this empty page</string>
     <string name="action_widgets">Widgets</string>
     <string name="no_widgets_available">No widgets available</string>
+    <string name="action_resize_widget">Resize</string>
+    <string name="resize_width_minus">Width −</string>
+    <string name="resize_width_plus">Width +</string>
+    <string name="resize_height_minus">Height −</string>
+    <string name="resize_height_plus">Height +</string>
+    <string name="resize_current_size">%1$d × %2$d cells</string>
+    <string name="resize_no_room">No room to resize there</string>
+    <string name="done">Done</string>
 </resources>
