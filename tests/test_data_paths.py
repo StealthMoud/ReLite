@@ -25,11 +25,32 @@ def test_devices_root_prefers_env_override(tmp_path: Path, monkeypatch):
     assert devices_root() == tmp_path / "devices"
 
 
+def _make_fake_checkout(tmp_path: Path) -> None:
+    """Section 10 (v0.4.0): cwd/profiles is only trusted when cwd actually
+    looks like the ReLite source checkout — a bare `profiles/` directory
+    is no longer enough, since an installed `relite` run from an
+    unrelated directory that happens to contain one must not silently
+    treat it as policy data."""
+    (tmp_path / "profiles").mkdir()
+    (tmp_path / "relite").mkdir()
+    (tmp_path / "relite" / "__init__.py").write_text('__version__ = "0.0.0"\n')
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "relite"\nversion = "0.0.0"\n')
+
+
 def test_profiles_root_prefers_cwd_checkout_over_packaged(tmp_path: Path, monkeypatch):
+    _make_fake_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert profiles_root().resolve() == (tmp_path / "profiles").resolve()
+
+
+def test_profiles_root_ignores_cwd_profiles_dir_without_checkout_fingerprint(tmp_path: Path, monkeypatch):
+    """A directory that merely happens to contain profiles/+devices/ (no
+    relite/__init__.py + pyproject.toml naming relite) must fall back to
+    the packaged resources, not be silently trusted as ReLite's own data."""
     (tmp_path / "profiles").mkdir()
     monkeypatch.chdir(tmp_path)
-    assert profiles_root() == Path("profiles")
-    assert profiles_root().resolve() == (tmp_path / "profiles").resolve()
+    root = profiles_root()
+    assert "resources" in root.parts
 
 
 def test_profiles_root_falls_back_to_packaged_resources_outside_checkout(tmp_path: Path, monkeypatch):

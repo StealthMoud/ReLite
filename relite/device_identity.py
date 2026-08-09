@@ -23,29 +23,94 @@ import hmac
 import re
 import secrets
 import shutil
+import stat
 from pathlib import Path
 
 _SANITIZE_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 _SALT_FILENAME = ".device_salt"
+_SALT_BACKUP_FILENAME = ".device_salt.backup"
 _KEY_HEX_LENGTH = 20
+
+# A directory produced by the *current* (salted) key scheme:
+# `<safe_model>-<20 lowercase hex chars>` (see `device_key()`). Only
+# directories matching this are at risk of being orphaned by a salt
+# change — a v0.2.0 legacy directory (8-hex, unsalted) or
+# `legacy-unassigned/` don't depend on the salt at all, so their mere
+# presence must not trigger the fail-closed path below.
+_SALTED_KEY_DIR_RE = re.compile(rf"^.+-[0-9a-f]{{{_KEY_HEX_LENGTH}}}$")
+
+
+class DeviceSaltError(RuntimeError):
+    """The device-identity salt is missing/corrupt and established
+    per-device directories already exist (section 9, v0.4.0) — silently
+    regenerating a new salt here would compute different `device_key()`
+    values and orphan every existing device directory, permanently
+    disconnecting them from any device that reconnects. Recovery requires
+    a human decision, not a silent auto-fix."""
 
 
 def default_local_root() -> Path:
     return Path(".local")
 
 
-def _load_or_create_salt(root: Path) -> bytes:
-    salt_path = root / _SALT_FILENAME
-    if salt_path.exists():
-        try:
-            salt = bytes.fromhex(salt_path.read_text().strip())
-            if salt:
-                return salt
-        except ValueError:
-            pass  # corrupt salt file — fall through and regenerate
-    salt = secrets.token_bytes(32)
+def _has_established_device_state(root: Path) -> bool:
+    if not root.is_dir():
+        return False
+    return any(entry.is_dir() and _SALTED_KEY_DIR_RE.match(entry.name) for entry in root.iterdir())
+
+
+def _write_salt(root: Path, salt: bytes) -> None:
     root.mkdir(parents=True, exist_ok=True)
+    salt_path = root / _SALT_FILENAME
     salt_path.write_text(salt.hex() + "\n")
+    backup_path = root / _SALT_BACKUP_FILENAME
+    backup_path.write_text(salt.hex() + "\n")
+    try:
+        salt_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        backup_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass  # best-effort — not every filesystem (e.g. some CI runners) supports chmod
+
+
+def _read_hex_salt(path: Path) -> bytes | None:
+    if not path.exists():
+        return None
+    try:
+        salt = bytes.fromhex(path.read_text().strip())
+    except ValueError:
+        return None
+    return salt or None
+
+
+def _load_or_create_salt(root: Path) -> bytes:
+    """Section 9 (v0.4.0): a missing/corrupt primary salt is recovered
+    from `.device_salt.backup` if that's intact. Only when *neither* file
+    is usable does this decide between "safe to create a fresh salt" (no
+    established device directories exist yet — nothing to orphan) and
+    "fail closed" (established directories exist — regenerating now would
+    silently disconnect them from every device forever)."""
+    salt = _read_hex_salt(root / _SALT_FILENAME)
+    if salt is not None:
+        return salt
+
+    backup_salt = _read_hex_salt(root / _SALT_BACKUP_FILENAME)
+    if backup_salt is not None:
+        _write_salt(root, backup_salt)  # re-establish the primary from the backup
+        return backup_salt
+
+    if _has_established_device_state(root):
+        raise DeviceSaltError(
+            f"Device identity salt at {root / _SALT_FILENAME} is missing or corrupt, and no valid "
+            f"backup was found at {root / _SALT_BACKUP_FILENAME}, but {root} already contains "
+            "established per-device directories. Regenerating the salt now would silently orphan "
+            "them (every device_key() would change). Restore a valid .device_salt from your own "
+            "backup, or if you accept losing the link to existing local state/snapshots for "
+            "already-connected devices, move the existing per-device directories aside manually "
+            "before retrying."
+        )
+
+    salt = secrets.token_bytes(32)
+    _write_salt(root, salt)
     return salt
 
 
