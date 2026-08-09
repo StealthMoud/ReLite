@@ -30,6 +30,7 @@ from relite.actions import PlannedAction, apply_plan, build_plan
 from relite.adb import AdbClient, AdbUnavailableError
 from relite.classifier import ClassificationDatabase, load_database
 from relite.device import DeviceProfile, probe_device
+from relite.device_identity import default_local_root, device_local_dir, migrate_legacy_layout
 from relite.packages import list_packages
 from relite.report import write_report
 from relite.restore import restore_from_journal, restore_from_snapshot
@@ -40,8 +41,6 @@ from relite.tuning import apply_animation_profile, probe_ram_expansion, set_priv
 console = Console()
 
 DEVICES_ROOT = Path("devices")
-JOURNAL_PATH = Path(".local") / "actions.jsonl"
-STATE_PATH = Path(".local") / "state.json"
 
 # How each profile is described to the user — never "safe"/"aggressive"
 # as a value judgement on the others, just what it is relative to them.
@@ -60,9 +59,17 @@ def _find_device_dir(model: str) -> Path | None:
     return None
 
 
-def _render_header(device_profile: DeviceProfile, profile_name: str) -> None:
+def _local_dir(device_profile: DeviceProfile) -> Path:
+    """The per-physical-device local state root, migrating any pre-v0.2.0
+    model-keyed layout on first use (see relite/device_identity.py)."""
+    root = default_local_root()
+    migrate_legacy_layout(root, device_profile.model, device_profile.serial)
+    return device_local_dir(root, device_profile.model, device_profile.serial)
+
+
+def _render_header(device_profile: DeviceProfile, profile_name: str, local_dir: Path) -> None:
     label = PROFILE_LABELS.get(profile_name, profile_name)
-    snapshot_exists = default_snapshot_dir(device_profile.model).exists()
+    snapshot_exists = default_snapshot_dir(local_dir).exists()
     console.print(f"[bold]ReLite — {device_profile.model}[/bold]")
     console.print()
     console.print("Device:")
@@ -173,7 +180,8 @@ def snapshot(ctx: click.Context, name: str) -> None:
     client, serial = _connected_client(ctx)
     console.print("Collecting device snapshot (packages, settings, props)...")
     snap = take_snapshot(client, serial, name)
-    out_dir = default_snapshot_dir(snap.device.model)
+    local_dir = _local_dir(snap.device)
+    out_dir = default_snapshot_dir(local_dir)
     out_path = out_dir / f"{name}.snapshot.json"
     snap.save(out_path)
     console.print(f"[green]Saved snapshot to {out_path}[/green] ({len(snap.packages)} packages)")
@@ -234,7 +242,7 @@ def plan(ctx: click.Context, profile_name: str) -> None:
     installed = list_packages(client)
     actions = build_plan(installed, db, profile_name)  # type: ignore[arg-type]
 
-    _render_header(device_profile, profile_name)
+    _render_header(device_profile, profile_name, _local_dir(device_profile))
     _render_changes(actions)
 
     table = Table(title="Reasons")
@@ -263,14 +271,27 @@ def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
     db = load_database(device_dir)
     installed = list_packages(client)
     actions = build_plan(installed, db, profile_name)  # type: ignore[arg-type]
+    local_dir = _local_dir(device_profile)
 
-    _render_header(device_profile, profile_name)
+    _render_header(device_profile, profile_name, local_dir)
     _render_changes(actions)
     console.print(f"Protected packages: verified ({len(db.protected)} entries loaded)")
     console.print()
 
+    # Section 4: a user must not be able to accidentally apply ReLite for
+    # the first time with no rollback point. --dry-run never creates or
+    # modifies snapshots.
+    snapshot_dir = default_snapshot_dir(local_dir)
+    if not dry_run and not snapshot_dir.exists():
+        console.print("No baseline snapshot found — creating one automatically before any change...")
+        auto_snap = take_snapshot(client, serial, "auto-pre-relite")
+        auto_snap_path = snapshot_dir / "auto-pre-relite.snapshot.json"
+        auto_snap.save(auto_snap_path)
+        console.print(f"[green]Safety snapshot created: {auto_snap_path}[/green]")
+        console.print()
+
     console.print(f"Applying [{'dry-run' if dry_run else 'live'}]...")
-    records = apply_plan(client, actions, JOURNAL_PATH, dry_run=dry_run)
+    records = apply_plan(client, actions, local_dir / "actions.jsonl", dry_run=dry_run)
     ok = sum(1 for r in records if r.result == "ok" or (dry_run and r.result == "dry-run"))
     failed = [r for r in records if r.result not in ("ok", "dry-run")]
     console.print(f"[green]{ok}/{len(records)} package action(s) applied[/green]")
@@ -282,8 +303,28 @@ def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
     if not dry_run:
         apply_animation_profile(client, profile_name)
         console.print("Animation scale applied.")
-        record_profile_applied(STATE_PATH, profile_name)
-        console.print(f"Active profile recorded: {profile_name}")
+
+        # Section 6: only mark the profile "active" if a fresh live
+        # integrity check confirms it — a partial failure must not be
+        # recorded as a clean apply.
+        post_installed = list_packages(client)
+        integrity = check_profile_integrity(post_installed, db, profile_name)  # type: ignore[arg-type]
+        state = record_profile_applied(
+            local_dir / "state.json",
+            profile_name,
+            integrity.status,
+            unexpected_failures=len(integrity.mismatches),
+        )
+        color = {"PASS": "green", "PASS_WITH_LIMITATIONS": "green", "DEGRADED": "yellow", "FAIL": "red"}
+        c = color[integrity.status]
+        console.print(f"Integrity after apply: [{c}]{integrity.status}[/{c}]")
+        if state.active_profile:
+            console.print(f"Active profile recorded: {profile_name}")
+        else:
+            console.print(
+                f"[red]Profile NOT recorded as active — {len(integrity.mismatches)} unexpected "
+                f"mismatch(es). Run 'relite status' for details.[/red]"
+            )
 
 
 @main.command()
@@ -299,29 +340,34 @@ def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dr
     """Roll back ReLite-managed changes."""
     client, serial = _connected_client(ctx)
 
+    device_profile = probe_device(client, serial)
+    local_dir = _local_dir(device_profile)
+
     if snapshot_name or restore_all:
-        device_profile = probe_device(client, serial)
         snap_name = snapshot_name or "stock"
-        snap_path = default_snapshot_dir(device_profile.model) / f"{snap_name}.snapshot.json"
+        snap_path = default_snapshot_dir(local_dir) / f"{snap_name}.snapshot.json"
         if not snap_path.exists():
             console.print(f"[red]Snapshot not found: {snap_path}[/red]")
             sys.exit(1)
         snap = Snapshot.load(snap_path)
+        # restore_from_snapshot restores every ReLite-managed setting
+        # (including Private DNS) to its exact pre-ReLite value — see
+        # relite/snapshot.py:MANAGED_SETTINGS — never a blind "turn it
+        # off", since the user may have configured Private DNS themselves
+        # before ReLite ever ran.
         result = restore_from_snapshot(client, snap, dry_run=dry_run)
         if not dry_run:
-            record_snapshot_restored(STATE_PATH, snap_name)
+            record_snapshot_restored(local_dir / "state.json", snap_name)
     else:
-        result = restore_from_journal(client, JOURNAL_PATH, dry_run=dry_run)
+        result = restore_from_journal(client, local_dir / "actions.jsonl", dry_run=dry_run)
 
     console.print(f"[green]{len(result.packages_restored)} package(s) restored[/green]")
+    if result.settings_restored:
+        console.print(f"[green]{len(result.settings_restored)} managed setting(s) restored[/green]")
     if result.errors:
         console.print(f"[yellow]{len(result.errors)} error(s):[/yellow]")
         for err in result.errors:
             console.print(f"  - {err}")
-
-    if restore_all and not dry_run:
-        set_private_dns(client, None)
-        console.print("Private DNS ad-block disabled.")
 
 
 @main.command()
@@ -332,8 +378,9 @@ def status(ctx: click.Context) -> None:
     client, serial = _connected_client(ctx)
     device_profile = probe_device(client, serial)
     device_dir = _find_device_dir(device_profile.model)
-    state = load_state(STATE_PATH)
-    snapshot_exists = default_snapshot_dir(device_profile.model).exists()
+    local_dir = _local_dir(device_profile)
+    state = load_state(local_dir / "state.json")
+    snapshot_exists = default_snapshot_dir(local_dir).exists()
 
     console.print(f"[bold]ReLite status — {device_profile.model}[/bold]")
     console.print()
@@ -343,6 +390,12 @@ def status(ctx: click.Context) -> None:
         console.print(f"  {state.active_profile}  ({label})  (applied {state.applied_at})")
     else:
         console.print("  none recorded — stock, or restored via 'relite restore' since the last apply")
+        if state.last_apply_status and state.last_apply_status not in ("PASS", "PASS_WITH_LIMITATIONS"):
+            console.print(
+                f"  [red]Last apply attempt ({state.last_apply_profile}) did not complete cleanly: "
+                f"{state.last_apply_status}, {state.last_apply_unexpected_failures} unexpected "
+                f"mismatch(es)[/red]"
+            )
     console.print()
 
     if device_dir is None:
@@ -356,10 +409,14 @@ def status(ctx: click.Context) -> None:
     if state.active_profile:
         report = check_profile_integrity(installed, db, state.active_profile)  # type: ignore[arg-type]
         console.print("Profile integrity:")
-        color = "green" if report.status == "PASS" else "red"
-        console.print(f"  [{color}]{report.status}[/{color}]")
+        color = {"PASS": "green", "PASS_WITH_LIMITATIONS": "green", "DEGRADED": "yellow", "FAIL": "red"}
+        console.print(f"  [{color[report.status]}]{report.status}[/{color[report.status]}]")
         console.print(f"  Packages checked:  {report.total_checked}")
         console.print(f"  Currently disabled (of checked): {report.disabled_count}")
+        if report.degraded:
+            console.print(f"  Degraded ({len(report.degraded)}, functionally satisfied but not literal):")
+            for d in report.degraded:
+                console.print(f"    - {d.package}: wanted {d.expected}, got {d.observed}")
         if report.mismatches:
             console.print(f"  Mismatches ({len(report.mismatches)}):")
             for m in report.mismatches:
@@ -373,7 +430,7 @@ def status(ctx: click.Context) -> None:
     console.print("Rollback:")
     console.print(f"  Snapshot on disk: {'yes' if snapshot_exists else 'no'}")
     console.print(f"  Last snapshot restored: {state.last_snapshot or 'none'}")
-    console.print(f"  Action journal: {'present' if JOURNAL_PATH.exists() else 'empty'}")
+    console.print(f"  Action journal: {'present' if (local_dir / 'actions.jsonl').exists() else 'empty'}")
 
 
 @main.command()
