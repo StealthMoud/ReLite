@@ -122,19 +122,42 @@ class AdbClient:
         return devices
 
     def require_single_device(self) -> str:
-        """Return the serial of the single usable device, or raise AdbUnavailableError."""
+        """Return the serial of the single usable device, or raise AdbUnavailableError.
+
+        Section 17 (v0.3.0): when `self.serial` (`--serial SERIAL`) is
+        set, it must be verified against the actual `adb devices -l`
+        output, not returned unconditionally. A prior version returned
+        the requested serial as soon as *some* device was usable,
+        without checking that the requested one was actually present —
+        so `--serial WRONG` while a different device happened to be
+        connected wouldn't fail here at all, only later and less clearly
+        when an actual `adb -s WRONG ...` command failed.
+        """
         devices = self.list_devices()
-        usable = {s: st for s, st in devices.items() if st == DeviceState.DEVICE}
 
         if not devices:
             raise AdbUnavailableError(DeviceState.NO_DEVICE, "no device connected")
+
+        if self.serial:
+            state = devices.get(self.serial)
+            if state is None:
+                raise AdbUnavailableError(
+                    DeviceState.NO_DEVICE, f"requested serial not connected: {self.serial}"
+                )
+            if state != DeviceState.DEVICE:
+                raise AdbUnavailableError(
+                    state, f"requested device present but not ready ({state.value}): {self.serial}"
+                )
+            return self.serial
+
+        usable = {s: st for s, st in devices.items() if st == DeviceState.DEVICE}
         if not usable:
             # report the most informative non-ready state we found
             state = next(iter(devices.values()))
             raise AdbUnavailableError(state, f"device present but not ready: {state.value}")
-        if len(usable) > 1 and not self.serial:
+        if len(usable) > 1:
             raise AdbUnavailableError(
                 DeviceState.MULTIPLE,
                 f"multiple devices attached, specify --serial: {', '.join(usable)}",
             )
-        return self.serial or next(iter(usable))
+        return next(iter(usable))

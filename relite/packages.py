@@ -12,6 +12,17 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from relite.adb import AdbClient
+from relite.validate import validate_package_name
+
+
+class PackageInventoryError(RuntimeError):
+    """Raised when `pm list packages` inventory can't be trusted — a
+    required query failed, or the results violate basic set invariants
+    (section 15 of the v0.3.0 plan). Fails closed: callers must refuse
+    live package mutation rather than silently treating a broken
+    inventory as "no packages", which would make every profile's plan
+    look like a no-op instead of erroring."""
+
 
 _PM_FLAGS = {
     "-f": "system",  # path + package, unfiltered marker handled separately
@@ -96,11 +107,40 @@ def list_packages(client: AdbClient) -> list[PackageInfo]:
     plan/restore decisions downstream. `--user 0` makes this listing
     match what's actually on the device for the profile ReLite manages.
     """
-    all_names = _parse_pm_list(client.shell("pm list packages --user 0").stdout)
-    system_names = _parse_pm_list(client.shell("pm list packages -s --user 0").stdout)
-    third_party_names = _parse_pm_list(client.shell("pm list packages -3 --user 0").stdout)
-    disabled_names = _parse_pm_list(client.shell("pm list packages -d --user 0").stdout)
-    enabled_names = _parse_pm_list(client.shell("pm list packages -e --user 0").stdout)
+    queries = {
+        "all": "pm list packages --user 0",
+        "system": "pm list packages -s --user 0",
+        "third_party": "pm list packages -3 --user 0",
+        "disabled": "pm list packages -d --user 0",
+        "enabled": "pm list packages -e --user 0",
+    }
+    results = {}
+    for key, command in queries.items():
+        result = client.shell(command)
+        if not result.ok:
+            raise PackageInventoryError(f"'{command}' failed: {result.stderr.strip() or 'no output'}")
+        results[key] = _parse_pm_list(result.stdout)
+
+    all_names = results["all"]
+    system_names = results["system"]
+    third_party_names = results["third_party"]
+    disabled_names = results["disabled"]
+    enabled_names = results["enabled"]
+
+    # Section 15: a truncated/garbled response from one query can still
+    # exit 0 (e.g. a partial adb transport hiccup) — check the invariants
+    # that must hold for genuinely consistent `pm` output before trusting
+    # any of it, rather than only checking each individual command's exit
+    # code.
+    for label, subset in (
+        ("system", system_names), ("third_party", third_party_names),
+        ("disabled", disabled_names), ("enabled", enabled_names),
+    ):
+        if not subset <= all_names:
+            raise PackageInventoryError(
+                f"package inventory invariant violated: '{label}' contains "
+                f"{len(subset - all_names)} package(s) not present in the bare listing"
+            )
 
     packages = []
     for name in sorted(all_names):
@@ -124,7 +164,16 @@ _RECEIVER_RE = re.compile(r"Receiver\{[^}]*\s([\w.]+/[\w.$]+)\}")
 
 
 def enrich_package(client: AdbClient, pkg: PackageInfo) -> PackageInfo:
-    """Fill in manifest-derived detail for a single package via `dumpsys package`."""
+    """Fill in manifest-derived detail for a single package via `dumpsys package`.
+
+    Section 16: validates `pkg.name` with the same canonical package-name
+    check used for mutation commands before it ever reaches a shell
+    string — `pkg.name` usually comes from a device's own `pm list
+    packages` output, not directly user-typed, but that's exactly why it
+    shouldn't be trusted implicitly: defense in depth against a
+    malformed or adversarial device response.
+    """
+    validate_package_name(pkg.name)
     dump = client.shell(f"dumpsys package {pkg.name}").stdout
     path_result = client.shell(f"pm path {pkg.name}")
     if path_result.ok and path_result.stdout.strip().startswith("package:"):

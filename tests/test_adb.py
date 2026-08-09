@@ -44,6 +44,53 @@ def test_require_single_device_raises_on_multiple(fake_runner):
     assert exc.value.state == DeviceState.MULTIPLE
 
 
+def test_require_single_device_with_requested_serial_missing(fake_runner):
+    """Section 17: requesting a serial that isn't connected at all must
+    raise, not silently substitute a different connected device."""
+    client = AdbClient(serial="REQUESTED", runner=fake_runner)
+    fake_runner.set_response(
+        ["adb", "-s", "REQUESTED", "devices", "-l"],
+        stdout="List of devices attached\nOTHER\tdevice\n",
+    )
+    with pytest.raises(AdbUnavailableError) as exc:
+        client.require_single_device()
+    assert exc.value.state == DeviceState.NO_DEVICE
+
+
+def test_require_single_device_with_requested_serial_offline(fake_runner):
+    client = AdbClient(serial="REQUESTED", runner=fake_runner)
+    fake_runner.set_response(
+        ["adb", "-s", "REQUESTED", "devices", "-l"],
+        stdout="List of devices attached\nREQUESTED\toffline\nOTHER\tdevice\n",
+    )
+    with pytest.raises(AdbUnavailableError) as exc:
+        client.require_single_device()
+    assert exc.value.state == DeviceState.OFFLINE
+
+
+def test_require_single_device_with_requested_serial_unauthorized(fake_runner):
+    client = AdbClient(serial="REQUESTED", runner=fake_runner)
+    fake_runner.set_response(
+        ["adb", "-s", "REQUESTED", "devices", "-l"],
+        stdout="List of devices attached\nREQUESTED\tunauthorized\n",
+    )
+    with pytest.raises(AdbUnavailableError) as exc:
+        client.require_single_device()
+    assert exc.value.state == DeviceState.UNAUTHORIZED
+
+
+def test_require_single_device_with_two_devices_connected_returns_exact_requested(fake_runner):
+    """The historical bug this fixes: with --serial set and *some* other
+    device also usable, the requested serial must be the one actually
+    returned/verified, not just assumed correct because len(usable) >= 1."""
+    client = AdbClient(serial="REQUESTED", runner=fake_runner)
+    fake_runner.set_response(
+        ["adb", "-s", "REQUESTED", "devices", "-l"],
+        stdout="List of devices attached\nREQUESTED\tdevice\nOTHER\tdevice\n",
+    )
+    assert client.require_single_device() == "REQUESTED"
+
+
 def test_offline_state_is_reported(fake_client: AdbClient, fake_runner):
     fake_runner.set_response(
         ["adb", "-s", "EMULATOR123", "devices", "-l"],
