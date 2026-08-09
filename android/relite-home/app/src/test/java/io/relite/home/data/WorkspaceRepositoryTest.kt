@@ -48,6 +48,40 @@ class WorkspaceRepositoryTest {
     }
 
     @Test
+    fun `corrupt data is preserved via backupCorrupt before falling back to empty`() {
+        // Section 50: a corrupt file must not just silently become an
+        // empty workspace with no trace of what was there before.
+        val backingUpStorage = BackupTrackingStorage("{not valid json")
+        WorkspaceRepository(backingUpStorage).load()
+        assertEquals(listOf("{not valid json"), backingUpStorage.backedUp)
+    }
+
+    @Test
+    fun `well-formed data does not trigger a corruption backup`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage)
+        repo.save(Workspace.empty())
+        val backingUpStorage = BackupTrackingStorage(storage.read())
+        loadWith(backingUpStorage)
+        assertTrue(backingUpStorage.backedUp.isEmpty())
+    }
+
+    private fun loadWith(storage: Storage) {
+        WorkspaceRepository(storage).load()
+    }
+
+    private class BackupTrackingStorage(private var content: String?) : Storage {
+        val backedUp = mutableListOf<String>()
+        override fun read(): String? = content
+        override fun write(content: String) {
+            this.content = content
+        }
+        override fun backupCorrupt(content: String) {
+            backedUp.add(content)
+        }
+    }
+
+    @Test
     fun `unsupported schema version fails safe to an empty workspace`() {
         val storage = InMemoryStorage("""{"schema": 999, "pageCount": 1, "items": [], "dock": []}""")
         val repo = WorkspaceRepository(storage)

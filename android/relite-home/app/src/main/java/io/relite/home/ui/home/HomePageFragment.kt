@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.view.Menu
 import android.view.View
 import android.widget.PopupMenu
 import androidx.fragment.app.Fragment
@@ -55,18 +56,19 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
      */
     private fun showLongPressMenu(app: ReliteHomeApplication, item: WorkspaceItem, anchor: View) {
         PopupMenu(requireContext(), anchor).apply {
-            menu.add(getString(R.string.action_remove_from_home))
+            menu.add(Menu.NONE, MENU_ID_REMOVE_FROM_HOME, Menu.NONE, R.string.action_remove_from_home)
             if (item is WorkspaceItem.AppIcon) {
-                menu.add(getString(R.string.action_app_info))
+                menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             }
             setOnMenuItemClickListener { menuItem ->
-                when (menuItem.title) {
-                    getString(R.string.action_remove_from_home) -> {
+                // Section 86: stable item id, not display text.
+                when (menuItem.itemId) {
+                    MENU_ID_REMOVE_FROM_HOME -> {
                         app.workspaceController.removeItem(item.id)
                         onWorkspaceChanged?.invoke()
                         true
                     }
-                    getString(R.string.action_app_info) -> {
+                    MENU_ID_APP_INFO -> {
                         if (item is WorkspaceItem.AppIcon) {
                             openAppInfo(item.componentKey.substringBefore("/"))
                         }
@@ -93,6 +95,8 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     companion object {
         private const val ARG_PAGE_INDEX = "page_index"
         private const val COLUMN_COUNT = 4
+        private const val MENU_ID_REMOVE_FROM_HOME = 1
+        private const val MENU_ID_APP_INFO = 2
 
         fun newInstance(pageIndex: Int): HomePageFragment = HomePageFragment().apply {
             arguments = Bundle().apply { putInt(ARG_PAGE_INDEX, pageIndex) }

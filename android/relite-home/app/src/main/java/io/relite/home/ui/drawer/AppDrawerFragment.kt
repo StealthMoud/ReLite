@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Menu
 import android.view.View
 import android.widget.EditText
 import android.widget.PopupMenu
@@ -83,16 +84,20 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
      */
     private fun showLongPressMenu(app: ReliteHomeApplication, entry: AppEntry, anchor: View) {
         PopupMenu(requireContext(), anchor).apply {
-            menu.add(getString(R.string.action_add_to_home))
-            menu.add(getString(R.string.action_app_info))
+            menu.add(Menu.NONE, MENU_ID_ADD_TO_HOME, Menu.NONE, R.string.action_add_to_home)
+            menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             setOnMenuItemClickListener { item ->
-                when (item.title) {
-                    getString(R.string.action_add_to_home) -> {
+                // Section 86: switch on the stable item id assigned above,
+                // never on displayed title text — localization or two
+                // menu entries sharing a label could otherwise pick the
+                // wrong branch.
+                when (item.itemId) {
+                    MENU_ID_ADD_TO_HOME -> {
                         app.workspaceController.addApp(entry.componentKey)
                         onWorkspaceChanged?.invoke()
                         true
                     }
-                    getString(R.string.action_app_info) -> {
+                    MENU_ID_APP_INFO -> {
                         openAppInfo(entry.packageName)
                         true
                     }
@@ -109,5 +114,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
 
     companion object {
         private const val COLUMN_COUNT = 4
+        private const val MENU_ID_ADD_TO_HOME = 1
+        private const val MENU_ID_APP_INFO = 2
     }
 }

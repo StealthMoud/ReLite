@@ -11,12 +11,16 @@ import org.json.JSONObject
 class WorkspaceRepository(private val storage: Storage) {
 
     fun load(): Workspace {
-        val raw = storage.read() ?: return Workspace.empty()
+        val raw = storage.read() ?: return Workspace.empty() // no prior data — genuinely a first run
         return try {
             deserialize(raw)
         } catch (_: Exception) {
             // Corrupt or foreign-schema layout file: fail safe to an empty
-            // workspace rather than crashing the launcher on startup.
+            // *in-memory* workspace rather than crashing the launcher on
+            // startup — but preserve the actual bad content on disk
+            // first (section 50) so it isn't silently destroyed the
+            // moment any edit triggers a save() with the empty result.
+            storage.backupCorrupt(raw)
             Workspace.empty()
         }
     }
