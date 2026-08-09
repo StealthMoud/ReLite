@@ -5,6 +5,7 @@
 # and the settings relite/tuning.py applies for this profile.
 
 name: safe
+label: conservative
 description: >
   Remove only high-confidence advertising/promotional components and
   high-confidence optional analytics. Preserve OEM conveniences. This is

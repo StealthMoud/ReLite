@@ -32,6 +32,7 @@ from relite.classifier import ClassificationDatabase, load_database
 from relite.device import DeviceProfile, probe_device
 from relite.device_identity import default_local_root, device_local_dir, migrate_legacy_layout
 from relite.packages import list_packages
+from relite.profiles import load_profiles
 from relite.report import write_report
 from relite.restore import restore_from_journal, restore_from_snapshot
 from relite.snapshot import Snapshot, default_snapshot_dir, take_snapshot
@@ -42,13 +43,12 @@ console = Console()
 
 DEVICES_ROOT = Path("devices")
 
-# How each profile is described to the user — never "safe"/"aggressive"
-# as a value judgement on the others, just what it is relative to them.
-PROFILE_LABELS = {
-    "safe": "conservative",
-    "performance": "recommended",
-    "maximum": "aggressive / experimental",
-}
+
+def _profile_label(profile_name: str) -> str:
+    """Never "safe"/"aggressive" as a value judgement on the others, just
+    what it is relative to them — see relite/profiles.yaml."""
+    meta = load_profiles().get(profile_name)
+    return meta.label if meta else profile_name
 
 
 def _find_device_dir(model: str) -> Path | None:
@@ -68,7 +68,7 @@ def _local_dir(device_profile: DeviceProfile) -> Path:
 
 
 def _render_header(device_profile: DeviceProfile, profile_name: str, local_dir: Path) -> None:
-    label = PROFILE_LABELS.get(profile_name, profile_name)
+    label = _profile_label(profile_name)
     snapshot_exists = default_snapshot_dir(local_dir).exists()
     console.print(f"[bold]ReLite — {device_profile.model}[/bold]")
     console.print()
@@ -386,7 +386,7 @@ def status(ctx: click.Context) -> None:
     console.print()
     console.print("Active profile:")
     if state.active_profile:
-        label = PROFILE_LABELS.get(state.active_profile, state.active_profile)
+        label = _profile_label(state.active_profile)
         console.print(f"  {state.active_profile}  ({label})  (applied {state.applied_at})")
     else:
         console.print("  none recorded — stock, or restored via 'relite restore' since the last apply")

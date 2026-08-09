@@ -1,6 +1,7 @@
 # ReLite "performance" profile — safe profile + more.
 
 name: performance
+label: recommended
 description: >
   Everything in the safe profile, plus disabling more optional OEM
   services, removing duplicate OEM applications, and reducing unnecessary

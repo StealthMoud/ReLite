@@ -12,13 +12,8 @@ import re
 from dataclasses import dataclass
 
 from relite.adb import AdbClient
+from relite.profiles import load_profiles
 from relite.validate import validate_dns_hostname, validate_setting_key
-
-ANIMATION_PROFILES: dict[str, str] = {
-    "safe": "0.5",
-    "performance": "0.5",
-    "maximum": "0",
-}
 
 # Candidate global/secure/system setting keys observed across OEM skins for
 # "RAM Expansion" / "extended RAM" / "virtual RAM" style features. ReLite
@@ -43,10 +38,11 @@ def set_animation_scale(client: AdbClient, scale: str) -> dict[str, bool]:
 
 
 def apply_animation_profile(client: AdbClient, profile: str) -> dict[str, bool]:
-    scale = ANIMATION_PROFILES.get(profile)
-    if scale is None:
+    profiles = load_profiles()
+    meta = profiles.get(profile)
+    if meta is None:
         raise ValueError(f"unknown profile {profile!r}")
-    return set_animation_scale(client, scale)
+    return set_animation_scale(client, meta.animation_scale)
 
 
 @dataclass

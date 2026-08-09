@@ -32,9 +32,10 @@ jobs:
 
       - name: Validate profile schemas
         run: python -c "
-          import yaml, pathlib;
-          [yaml.safe_load(p.read_text()) for p in pathlib.Path('profiles').glob('*.yaml')];
-          print('profiles/*.yaml parse OK')"
+          from relite.profiles import load_profiles;
+          profiles = load_profiles();
+          assert len(profiles) == 3, profiles;
+          print('profiles/*.yaml valid:', sorted(profiles))"
 
       - name: Check generated package docs are up to date
         run: |
@@ -95,8 +96,14 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --console=plain
 
+      - name: Lint
+        run: ./gradlew lint --console=plain
+
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --console=plain
+
+      - name: Assemble release APK
+        run: ./gradlew assembleRelease --console=plain
 
   shellcheck:
     name: shellcheck
