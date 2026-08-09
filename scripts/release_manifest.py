@@ -87,7 +87,7 @@ def check_pinned_certificate(cert_sha256: str | None) -> str | None:
     return None
 
 
-def build_manifest(version: str, apk_path: Path, wheel_path: Path | None) -> dict:
+def build_manifest(version: str, apk_path: Path, wheel_path: Path | None, sdist_path: Path | None = None) -> dict:
     verified_ok, cert_dn, cert_sha256 = verify_apk_signature(apk_path)
     signed_status = classify_signing(verified_ok, cert_dn)
 
@@ -114,6 +114,8 @@ def build_manifest(version: str, apk_path: Path, wheel_path: Path | None) -> dic
     }
     if wheel_path and wheel_path.exists():
         manifest["wheel"] = {"name": wheel_path.name, "sha256": sha256_of(wheel_path)}
+    if sdist_path and sdist_path.exists():
+        manifest["sdist"] = {"name": sdist_path.name, "sha256": sha256_of(sdist_path)}
     return manifest
 
 
@@ -122,10 +124,11 @@ def main() -> int:
     parser.add_argument("version")
     parser.add_argument("apk_path", type=Path)
     parser.add_argument("--wheel", type=Path, default=None)
+    parser.add_argument("--sdist", type=Path, default=None)
     parser.add_argument("--out", type=Path, default=REPO_ROOT / "dist" / "release-manifest.json")
     args = parser.parse_args()
 
-    manifest = build_manifest(args.version, args.apk_path, args.wheel)
+    manifest = build_manifest(args.version, args.apk_path, args.wheel, args.sdist)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     print(f"Wrote {args.out}")

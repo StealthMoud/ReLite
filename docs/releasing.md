@@ -63,21 +63,26 @@ publishing an artifact signed with an unexpected key.
 ## Packaging a release
 
 ```bash
-./scripts/package-release.sh 0.3.0
+./scripts/package-release.sh 0.4.0
 ```
 
-Produces:
+One canonical command (section 13 of the v0.4.0 plan) produces
+everything a GitHub Release needs — not just the APK:
 
 ```text
-dist/ReLite-Home-v0.3.0-debug.apk
-dist/ReLite-Home-v0.3.0-debug.apk.sha256
+dist/ReLite-Home-v0.4.0-debug.apk
+dist/ReLite-Home-v0.4.0-debug.apk.sha256
+dist/relite-0.4.0-py3-none-any.whl
+dist/relite-0.4.0-py3-none-any.whl.sha256
+dist/relite-0.4.0.tar.gz
+dist/relite-0.4.0.tar.gz.sha256
 dist/release-manifest.json
 ```
 
 `release-manifest.json` (section 34) records version, git commit, APK
-name/SHA-256/signed-status/certificate-DN, the CLI wheel's
-name/SHA-256 if built alongside it, and a build timestamp — no secret
-values.
+name/SHA-256/signed-status/certificate-DN, the CLI wheel and sdist's
+name/SHA-256, and a build timestamp — no secret values. Requires the
+`build` package (`pip install build`) on the machine running the script.
 
 `dist/` is gitignored — these are release *artifacts*, attached to a
 GitHub Release, not committed to the repository.

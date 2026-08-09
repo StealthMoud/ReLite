@@ -145,8 +145,16 @@ jobs:
       - name: Release packaging test (no signing secrets — must produce an honestly-labeled debug artifact)
         working-directory: .
         run: |
-          python3 scripts/package-release.sh ci-test
+          # Section 12 (v0.4.0): this used to be invoked as
+          # `python3 scripts/package-release.sh` — running a bash script
+          # through the Python interpreter, which fails immediately as a
+          # syntax error. The check had never actually run in CI.
+          pip install build
+          chmod +x scripts/package-release.sh
+          ./scripts/package-release.sh ci-test
           test -f dist/ReLite-Home-vci-test-debug.apk
+          test -f dist/*.whl
+          test -f dist/*.tar.gz
           status=$(python3 -c "import json; print(json.load(open('dist/release-manifest.json'))['apk']['signed_status'])")
           test "$status" = "debug" || { echo "::error::expected signed_status=debug with no secrets configured, got $status"; exit 1; }
 
