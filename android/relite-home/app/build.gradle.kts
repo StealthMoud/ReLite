@@ -1,7 +1,34 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// Optional release signing (section 37, v0.2.0): never a keystore
+// committed to this repository. Credentials come from a gitignored
+// android/relite-home/keystore.properties (local dev) or environment
+// variables (CI secrets) — whichever is present. If neither is set, no
+// "release" signingConfig is registered at all and `assembleRelease`
+// still produces a normal, working, R8-minified but *unsigned* APK; it's
+// scripts/package-release.sh's job to never present that as a signed
+// release artifact (see docs/releasing.md).
+val keystorePropertiesFile = file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun signingProperty(propertyKey: String, envVar: String): String? =
+    (keystoreProperties.getProperty(propertyKey) ?: System.getenv(envVar))?.ifBlank { null }
+
+val releaseStoreFile = signingProperty("storeFile", "RELITE_RELEASE_STORE_FILE")
+val releaseStorePassword = signingProperty("storePassword", "RELITE_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = signingProperty("keyAlias", "RELITE_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = signingProperty("keyPassword", "RELITE_RELEASE_KEY_PASSWORD")
+val hasReleaseSigningCredentials =
+    releaseStoreFile != null && releaseStorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null
 
 android {
     namespace = "io.relite.home"
@@ -13,16 +40,30 @@ android {
         // assuming a specific one — relite/device.py reads the real ro.build.version.sdk.
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    if (hasReleaseSigningCredentials) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasReleaseSigningCredentials) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             isMinifyEnabled = false

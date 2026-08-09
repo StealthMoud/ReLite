@@ -24,6 +24,9 @@ android/relite-home/.gradle/
 android/relite-home/build/
 android/relite-home/app/build/
 android/relite-home/local.properties
+android/relite-home/keystore.properties
+*.jks
+*.keystore
 android/relite-home/.idea/
 android/relite-home/*.iml
 android/relite-home/captures/

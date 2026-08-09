@@ -1,29 +1,47 @@
 # Releasing
 
-## Why the packaged APK is debug-signed, not release-signed
+## Release signing
 
-`android/relite-home/app/build.gradle.kts` defines a `release` build
-type (minified, ProGuard/R8-optimized) but deliberately has **no
-`signingConfig`** attached to it — there is no release-signing keystore
-in this repository, and there shouldn't be: a real release key must be
-generated and held privately by whoever is actually publishing signed
-builds, never committed to source control (a committed "release"
-keystore is not a release key at all — anyone with repo access could
-resign malicious builds as authentic).
+`android/relite-home/app/build.gradle.kts` supports an optional
+`release` signing config, sourced from (in order of precedence within
+each field) `android/relite-home/keystore.properties` — gitignored,
+never committed — or these environment variables, meant for CI secrets:
 
-Until that infrastructure exists (a maintainer-held keystore, ideally
-wired through CI secrets rather than a local file), ReLite Home release
-artifacts are packaged using the standard Android **debug** signing
-key (auto-generated per machine, well-known, never intended to prove
-publisher identity). This is why the artifact is named
-`ReLite-Home-vX.Y.Z-debug.apk` rather than `-release.apk` — the name is
-honest about what it is. It installs and runs identically to a release
-build; what it doesn't provide is a verifiable publisher signature or
-R8 shrinking/obfuscation.
+```text
+RELITE_RELEASE_STORE_FILE
+RELITE_RELEASE_STORE_PASSWORD
+RELITE_RELEASE_KEY_ALIAS
+RELITE_RELEASE_KEY_PASSWORD
+```
 
-If/when real release-signing infrastructure is set up, update this file
-and `scripts/package-release.sh` together — don't just change the output
-filename without actually changing what produced it.
+`keystore.properties` format (all four keys required for the signing
+config to activate):
+
+```properties
+storeFile=/absolute/or/relative/path/to/release.jks
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+**No keystore is ever committed to this repository.** A real release
+key must be generated and held privately by whoever is actually
+publishing signed builds — a committed "release" keystore is not a
+release key at all, since anyone with repo access could resign
+malicious builds as authentic.
+
+If none of the four credentials are present, no `release` signingConfig
+is registered at all; `./gradlew assembleRelease` still succeeds
+(minified, R8-optimized) but produces an **unsigned** APK that cannot
+be installed as-is. `scripts/package-release.sh` handles this
+automatically: with credentials present it builds and packages a
+signed `-release.apk`; without them it falls back to the standard
+Android **debug**-signed build (auto-generated per machine, well-known,
+never intended to prove publisher identity) and names the artifact
+`ReLite-Home-vX.Y.Z-debug.apk` — honest about what it is. A debug build
+installs and runs identically to a release build; what it lacks is a
+verifiable publisher signature (R8 minification is the `release` build
+type either way).
 
 ## Packaging a release
 
