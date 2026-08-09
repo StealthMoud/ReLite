@@ -87,6 +87,55 @@ class WorkspaceControllerTest {
         assertFalse(controller.moveItem("does-not-exist", GridPosition(0, 0, 0)))
     }
 
+    // --- canMoveTo ---
+
+    @Test
+    fun `canMoveTo is true for a free cell and does not mutate state`() {
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+        assertTrue(controller.canMoveTo(id, GridPosition(0, 1, 1)))
+        assertEquals(GridPosition(0, 0, 0), controller.current().items.single().position)
+    }
+
+    @Test
+    fun `canMoveTo is false for a cell occupied by another item`() {
+        val a = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+        controller.addApp("io.relite.b/Main", GridPosition(0, 1, 0))
+        assertFalse(controller.canMoveTo(a, GridPosition(0, 1, 0)))
+    }
+
+    @Test
+    fun `canMoveTo is true for an item's own current cell`() {
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+        assertTrue(controller.canMoveTo(id, GridPosition(0, 0, 0)))
+    }
+
+    @Test
+    fun `canMoveTo is false for an out-of-bounds destination`() {
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+        assertFalse(controller.canMoveTo(id, GridPosition(0, TEST_SPEC.columns, 0)))
+    }
+
+    @Test
+    fun `canMoveTo is false for an unknown id`() {
+        assertFalse(controller.canMoveTo("does-not-exist", GridPosition(0, 0, 0)))
+    }
+
+    @Test
+    fun `canMoveTo respects a widget's full rectangle, not just its anchor`() {
+        val widgetId = controller.addWidget(
+            appWidgetId = 1,
+            spanColumns = 2,
+            spanRows = 2,
+            providerComponent = "io.relite.widget/Provider",
+            position = GridPosition(0, 0, 0),
+        )!!
+        controller.addApp("io.relite.a/Main", GridPosition(0, 3, 0))
+        // Anchor at (2,0) would be free, but the 2x2 rectangle from there overlaps nothing here —
+        // move it so it *would* overlap the app at (3,0) to prove the full rect is checked.
+        assertFalse(controller.canMoveTo(widgetId, GridPosition(0, 2, 0)))
+        assertTrue(controller.canMoveTo(widgetId, GridPosition(0, 0, 1)))
+    }
+
     // --- pages ---
 
     @Test

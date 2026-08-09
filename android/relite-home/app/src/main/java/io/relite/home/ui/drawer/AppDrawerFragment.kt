@@ -10,6 +10,7 @@ import android.view.Menu
 import android.view.View
 import android.widget.EditText
 import android.widget.PopupMenu
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -85,6 +86,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     private fun showLongPressMenu(app: ReliteHomeApplication, entry: AppEntry, anchor: View) {
         PopupMenu(requireContext(), anchor).apply {
             menu.add(Menu.NONE, MENU_ID_ADD_TO_HOME, Menu.NONE, R.string.action_add_to_home)
+            menu.add(Menu.NONE, MENU_ID_PIN_TO_DOCK, Menu.NONE, R.string.action_pin_to_dock)
             menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             setOnMenuItemClickListener { item ->
                 // Section 86: switch on the stable item id assigned above,
@@ -95,6 +97,17 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
                     MENU_ID_ADD_TO_HOME -> {
                         app.workspaceController.addApp(entry.componentKey)
                         onWorkspaceChanged?.invoke()
+                        true
+                    }
+                    MENU_ID_PIN_TO_DOCK -> {
+                        // Section 28: pinning leaves any existing home shortcut for the
+                        // same app untouched — home and dock are independent surfaces.
+                        val pinned = app.workspaceController.addToDock(entry.componentKey)
+                        if (!pinned) {
+                            Toast.makeText(requireContext(), R.string.dock_full, Toast.LENGTH_SHORT).show()
+                        } else {
+                            onWorkspaceChanged?.invoke()
+                        }
                         true
                     }
                     MENU_ID_APP_INFO -> {
@@ -115,5 +128,6 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     companion object {
         private const val MENU_ID_ADD_TO_HOME = 1
         private const val MENU_ID_APP_INFO = 2
+        private const val MENU_ID_PIN_TO_DOCK = 3
     }
 }

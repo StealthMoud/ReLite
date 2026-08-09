@@ -3,8 +3,10 @@ package io.relite.home.ui
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.LauncherApps
+import android.net.Uri
 import android.os.Bundle
 import android.os.Process
+import android.provider.Settings
 import android.view.View
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -104,7 +106,21 @@ class MainActivity : AppCompatActivity() {
             iconCache = app.iconCache,
             onAppClick = { launchApp(it.componentKey) },
             onAppsButtonClick = { showAppDrawer() },
+            onRemoveFromDock = { componentKey ->
+                app.workspaceController.removeFromDock(componentKey)
+                refreshWorkspace()
+            },
+            onAppInfo = { packageName -> openAppInfo(packageName) },
+            onReorder = { newOrder ->
+                app.workspaceController.reorderDock(newOrder)
+                refreshWorkspace()
+            },
         )
+    }
+
+    private fun openAppInfo(packageName: String) {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+        startActivity(intent)
     }
 
     private fun launchApp(componentKey: String) {

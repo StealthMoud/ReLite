@@ -7,4 +7,7 @@
     <string name="action_add_to_home">Add to Home</string>
     <string name="action_app_info">App info</string>
     <string name="action_remove_from_home">Remove from Home</string>
+    <string name="action_pin_to_dock">Pin to Dock</string>
+    <string name="action_remove_from_dock">Remove from Dock</string>
+    <string name="dock_full">Dock is full</string>
 </resources>

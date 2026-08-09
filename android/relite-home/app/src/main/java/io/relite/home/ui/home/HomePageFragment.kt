@@ -13,6 +13,7 @@ import android.view.ViewConfiguration
 import android.widget.ImageView
 import android.widget.PopupMenu
 import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
@@ -202,6 +203,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         PopupMenu(requireContext(), anchor).apply {
             menu.add(Menu.NONE, MENU_ID_REMOVE_FROM_HOME, Menu.NONE, R.string.action_remove_from_home)
             if (item is WorkspaceItem.AppIcon) {
+                menu.add(Menu.NONE, MENU_ID_PIN_TO_DOCK, Menu.NONE, R.string.action_pin_to_dock)
                 menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             }
             setOnMenuItemClickListener { menuItem ->
@@ -212,6 +214,17 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                         }
                         app.workspaceController.removeItem(item.id)
                         onWorkspaceChanged?.invoke()
+                        true
+                    }
+                    MENU_ID_PIN_TO_DOCK -> {
+                        if (item is WorkspaceItem.AppIcon) {
+                            val pinned = app.workspaceController.addToDock(item.componentKey)
+                            if (!pinned) {
+                                Toast.makeText(requireContext(), R.string.dock_full, Toast.LENGTH_SHORT).show()
+                            } else {
+                                onWorkspaceChanged?.invoke()
+                            }
+                        }
                         true
                     }
                     MENU_ID_APP_INFO -> {
@@ -235,6 +248,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         private const val ARG_PAGE_INDEX = "page_index"
         private const val MENU_ID_REMOVE_FROM_HOME = 1
         private const val MENU_ID_APP_INFO = 2
+        private const val MENU_ID_PIN_TO_DOCK = 3
 
         fun newInstance(pageIndex: Int): HomePageFragment = HomePageFragment().apply {
             arguments = Bundle().apply { putInt(ARG_PAGE_INDEX, pageIndex) }
