@@ -52,6 +52,11 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             val span = spanOf(item)
             grid.addCell(cellView, item.position.column, item.position.row, span.first, span.second)
         }
+
+        // Section 20-21: long-pressing empty grid space (not consumed by any
+        // item's own listener) offers page management — the required minimum
+        // UI for the addPage/removeEmptyPage controller methods.
+        grid.setOnLongClickListener { showPageManagementMenu(app, pageItems.isEmpty()); true }
     }
 
     private fun spanOf(item: WorkspaceItem): Pair<Int, Int> = when (item) {
@@ -202,6 +207,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     private fun showLongPressMenu(app: ReliteHomeApplication, item: WorkspaceItem, anchor: View) {
         PopupMenu(requireContext(), anchor).apply {
             menu.add(Menu.NONE, MENU_ID_REMOVE_FROM_HOME, Menu.NONE, R.string.action_remove_from_home)
+            menu.add(Menu.NONE, MENU_ID_MOVE_TO_PAGE, Menu.NONE, R.string.action_move_to_page)
             if (item is WorkspaceItem.AppIcon) {
                 menu.add(Menu.NONE, MENU_ID_PIN_TO_DOCK, Menu.NONE, R.string.action_pin_to_dock)
                 menu.add(Menu.NONE, MENU_ID_ADD_TO_FOLDER, Menu.NONE, R.string.action_add_to_folder)
@@ -226,6 +232,10 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                                 onWorkspaceChanged?.invoke()
                             }
                         }
+                        true
+                    }
+                    MENU_ID_MOVE_TO_PAGE -> {
+                        showMoveToPageDialog(app, item)
                         true
                     }
                     MENU_ID_ADD_TO_FOLDER -> {
@@ -256,12 +266,57 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         startActivity(intent)
     }
 
+    /** Section 19: accessibility/precision fallback to hover-based cross-page drag — always available. */
+    private fun showMoveToPageDialog(app: ReliteHomeApplication, item: WorkspaceItem) {
+        val pageCount = app.workspaceController.current().pageCount
+        val labels = (0 until pageCount).map { getString(R.string.page_label, it + 1) } +
+            getString(R.string.new_page_option)
+
+        android.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.action_move_to_page)
+            .setItems(labels.toTypedArray()) { _, which ->
+                val targetPage = if (which < pageCount) which else app.workspaceController.addPage()
+                if (targetPage < 0 || !app.workspaceController.moveToPage(item.id, targetPage)) {
+                    android.widget.Toast.makeText(requireContext(), R.string.move_no_room, android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    onWorkspaceChanged?.invoke()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Sections 20-21: minimal page management, reached from a long press on empty grid space. */
+    private fun showPageManagementMenu(app: ReliteHomeApplication, pageIsEmpty: Boolean) {
+        val canRemove = pageIsEmpty && pageIndex > 0
+        val options = buildList {
+            add(getString(R.string.action_add_page))
+            if (canRemove) add(getString(R.string.action_remove_page))
+        }
+        android.app.AlertDialog.Builder(requireContext())
+            .setItems(options.toTypedArray()) { _, which ->
+                when (options[which]) {
+                    getString(R.string.action_add_page) -> {
+                        app.workspaceController.addPage()
+                        onWorkspaceChanged?.invoke()
+                    }
+                    getString(R.string.action_remove_page) -> {
+                        app.workspaceController.removeEmptyPage(pageIndex)
+                        onWorkspaceChanged?.invoke()
+                    }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     companion object {
         private const val ARG_PAGE_INDEX = "page_index"
         private const val MENU_ID_REMOVE_FROM_HOME = 1
         private const val MENU_ID_APP_INFO = 2
         private const val MENU_ID_PIN_TO_DOCK = 3
         private const val MENU_ID_ADD_TO_FOLDER = 4
+        private const val MENU_ID_MOVE_TO_PAGE = 5
 
         fun newInstance(pageIndex: Int): HomePageFragment = HomePageFragment().apply {
             arguments = Bundle().apply { putInt(ARG_PAGE_INDEX, pageIndex) }

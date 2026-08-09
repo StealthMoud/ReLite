@@ -20,4 +20,10 @@
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
     <string name="workspace_full">No free space on the home screen</string>
+    <string name="action_move_to_page">Move to page…</string>
+    <string name="new_page_option">New page</string>
+    <string name="page_label">Page %1$d</string>
+    <string name="move_no_room">No room on that page</string>
+    <string name="action_add_page">Add page</string>
+    <string name="action_remove_page">Remove this empty page</string>
 </resources>
