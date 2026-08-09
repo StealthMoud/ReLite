@@ -5,6 +5,7 @@ import android.content.ComponentCallbacks2
 import android.content.pm.LauncherApps
 import io.relite.home.data.AppRepository
 import io.relite.home.data.FileStorage
+import io.relite.home.data.WorkspaceController
 import io.relite.home.data.WorkspaceRepository
 import io.relite.home.util.IconCache
 import java.io.File
@@ -26,7 +27,7 @@ class ReliteHomeApplication : Application() {
     lateinit var appRepository: AppRepository
         private set
 
-    lateinit var workspaceRepository: WorkspaceRepository
+    lateinit var workspaceController: WorkspaceController
         private set
 
     lateinit var iconCache: IconCache
@@ -36,11 +37,45 @@ class ReliteHomeApplication : Application() {
         super.onCreate()
         appRepository = AppRepository(this)
         appRepository.start()
-        workspaceRepository = WorkspaceRepository(FileStorage(File(filesDir, "workspace.json")))
+
+        val workspaceRepository = WorkspaceRepository(FileStorage(File(filesDir, "workspace.json")))
+        workspaceController = WorkspaceController(
+            workspaceRepository,
+            gridColumns = GRID_COLUMNS,
+            gridRows = GRID_ROWS,
+            dockCapacity = DOCK_CAPACITY,
+        )
+        appRepository.onAppsChanged {
+            // A package can disappear (uninstall, or ReLite's own
+            // `pm uninstall --user 0`) at any time; drop any shortcut, dock
+            // entry, or folder membership pointing at it so the workspace
+            // never renders a dead icon (section 20, v0.2.0). Reconciling
+            // against every currently-launchable component on each change
+            // is simpler and more robust than trying to diff exactly which
+            // package went away from a LauncherApps callback's arguments.
+            val launchable = appRepository.loadAll().map { it.packageName }.toSet()
+            val referenced = workspaceController.current().let { ws ->
+                (ws.items.filterIsInstance<io.relite.home.data.WorkspaceItem.AppIcon>().map { it.componentKey } +
+                    ws.items.filterIsInstance<io.relite.home.data.WorkspaceItem.FolderIcon>()
+                        .flatMap { it.itemComponentKeys } +
+                    ws.dockComponentKeys)
+                    .map { it.substringBefore("/") }
+                    .toSet()
+            }
+            for (packageName in referenced - launchable) {
+                workspaceController.removeShortcutsForPackage(packageName)
+            }
+        }
 
         val launcherApps = getSystemService(LauncherApps::class.java)
         val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
         iconCache = IconCache(launcherApps, iconSizePx)
+    }
+
+    companion object {
+        const val GRID_COLUMNS = 4
+        const val GRID_ROWS = 5
+        const val DOCK_CAPACITY = 5
     }
 
     override fun onTrimMemory(level: Int) {

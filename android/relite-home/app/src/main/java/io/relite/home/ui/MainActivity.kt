@@ -43,27 +43,13 @@ class MainActivity : AppCompatActivity() {
         dock = findViewById(R.id.dock)
         drawerContainer = findViewById(R.id.drawer_container)
 
-        val workspace = app.workspaceRepository.load()
-        pageIndicator.pageCount = workspace.pageCount
-
-        pager.adapter = HomePagerAdapter(this, workspace.pageCount) { fragment ->
-            fragment.onAppLaunch = { componentKey -> launchApp(componentKey) }
-            fragment.onFolderOpen = { folder -> openFolder(folder) }
-        }
         pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 pageIndicator.currentPage = position
             }
         })
 
-        val allApps = app.appRepository.loadAll().associateBy { it.componentKey }
-        dock.bind(
-            componentKeys = workspace.dockComponentKeys,
-            allApps = allApps,
-            iconCache = app.iconCache,
-            onAppClick = { launchApp(it.componentKey) },
-            onAppsButtonClick = { showAppDrawer() },
-        )
+        refreshWorkspace()
 
         drawerContainer.visibility = View.GONE
 
@@ -77,6 +63,34 @@ class MainActivity : AppCompatActivity() {
                 hideAppDrawer()
             }
         }
+    }
+
+    /**
+     * (Re-)builds the pager and dock from the current [io.relite.home.data.WorkspaceController]
+     * state. Called on initial load and after any edit (add/remove/move,
+     * dock/folder changes) — rebuilding the pager is the simplest correct
+     * way to keep every page's RecyclerView in sync with the single
+     * source of truth without a more elaborate observer/diffing layer
+     * that this launcher's scope doesn't yet justify.
+     */
+    private fun refreshWorkspace() {
+        val workspace = app.workspaceController.current()
+        pageIndicator.pageCount = workspace.pageCount
+
+        pager.adapter = HomePagerAdapter(this, workspace.pageCount) { fragment ->
+            fragment.onAppLaunch = { componentKey -> launchApp(componentKey) }
+            fragment.onFolderOpen = { folder -> openFolder(folder) }
+            fragment.onWorkspaceChanged = { refreshWorkspace() }
+        }
+
+        val allApps = app.appRepository.loadAll().associateBy { it.componentKey }
+        dock.bind(
+            componentKeys = workspace.dockComponentKeys,
+            allApps = allApps,
+            iconCache = app.iconCache,
+            onAppClick = { launchApp(it.componentKey) },
+            onAppsButtonClick = { showAppDrawer() },
+        )
     }
 
     private fun launchApp(componentKey: String) {
@@ -97,6 +111,7 @@ class MainActivity : AppCompatActivity() {
         if (drawerContainer.visibility == View.VISIBLE) return
         val fragment = AppDrawerFragment().apply {
             onLaunch = { launchApp(it.componentKey) }
+            onWorkspaceChanged = { refreshWorkspace() }
         }
         supportFragmentManager.beginTransaction()
             .replace(R.id.drawer_container, fragment)

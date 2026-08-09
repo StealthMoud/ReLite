@@ -4,4 +4,7 @@
     <string name="drawer_search_hint">Search apps</string>
     <string name="apps_button_description">Open app drawer</string>
     <string name="folder_close_description">Close folder</string>
+    <string name="action_add_to_home">Add to Home</string>
+    <string name="action_app_info">App info</string>
+    <string name="action_remove_from_home">Remove from Home</string>
 </resources>

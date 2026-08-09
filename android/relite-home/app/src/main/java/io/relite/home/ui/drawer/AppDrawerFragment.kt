@@ -1,10 +1,14 @@
 package io.relite.home.ui.drawer
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.widget.EditText
+import android.widget.PopupMenu
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -25,6 +29,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     private var appsChangedSubscription: AppRepository.Subscription? = null
 
     var onLaunch: ((AppEntry) -> Unit)? = null
+    var onWorkspaceChanged: (() -> Unit)? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val app = requireActivity().application as ReliteHomeApplication
@@ -32,7 +37,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         adapter = AppDrawerAdapter(
             iconCache = app.iconCache,
             onAppClick = { onLaunch?.invoke(it) },
-            onAppLongClick = { _, _ -> false },
+            onAppLongClick = { entry, anchor -> showLongPressMenu(app, entry, anchor); true },
         )
 
         val recycler = view.findViewById<RecyclerView>(R.id.drawer_recycler)
@@ -68,6 +73,39 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     }
 
     private fun applyCurrentQuery(): List<AppEntry> = AppSearch.search(allApps, currentQuery)
+
+    /**
+     * Minimum viable "Add to Home" affordance (section 15, v0.2.0):
+     * placed in the first free grid cell via WorkspaceController rather
+     * than a drag gesture, which is out of scope for this pass. App info
+     * uses the standard system Settings intent — no custom permissions
+     * manager (section 25).
+     */
+    private fun showLongPressMenu(app: ReliteHomeApplication, entry: AppEntry, anchor: View) {
+        PopupMenu(requireContext(), anchor).apply {
+            menu.add(getString(R.string.action_add_to_home))
+            menu.add(getString(R.string.action_app_info))
+            setOnMenuItemClickListener { item ->
+                when (item.title) {
+                    getString(R.string.action_add_to_home) -> {
+                        app.workspaceController.addApp(entry.componentKey)
+                        onWorkspaceChanged?.invoke()
+                        true
+                    }
+                    getString(R.string.action_app_info) -> {
+                        openAppInfo(entry.packageName)
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }.show()
+    }
+
+    private fun openAppInfo(packageName: String) {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+        startActivity(intent)
+    }
 
     companion object {
         private const val COLUMN_COUNT = 4
