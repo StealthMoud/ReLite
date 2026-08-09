@@ -9,6 +9,7 @@ import android.os.Process
 import android.provider.Settings
 import android.view.View
 import androidx.activity.addCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.viewpager2.widget.ViewPager2
@@ -20,6 +21,7 @@ import io.relite.home.ui.folder.FolderSheetDialog
 import io.relite.home.ui.home.HomePagerAdapter
 import io.relite.home.ui.home.PageIndicatorView
 import io.relite.home.ui.home.WorkspaceDockView
+import io.relite.home.ui.widget.WidgetPickerActivity
 
 /**
  * ReLite Home's single top-level screen: workspace pages + page indicator +
@@ -34,6 +36,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pageIndicator: PageIndicatorView
     private lateinit var dock: WorkspaceDockView
     private lateinit var drawerContainer: FragmentContainerView
+
+    // Any result (OK or CANCELED) may have changed the workspace — a
+    // cancellation mid-flow can still have consumed/freed a widget id, and
+    // a plain refresh on cancel is a harmless no-op.
+    private val widgetPickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        refreshWorkspace()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +106,7 @@ class MainActivity : AppCompatActivity() {
             fragment.onAppLaunch = { componentKey -> launchApp(componentKey) }
             fragment.onFolderOpen = { folder -> openFolder(folder) }
             fragment.onWorkspaceChanged = { refreshWorkspace() }
+            fragment.onAddWidgetRequested = { widgetPickerLauncher.launch(WidgetPickerActivity.newIntent(this)) }
         }
 
         val allApps = app.appRepository.loadAll().associateBy { it.componentKey }

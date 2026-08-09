@@ -33,7 +33,7 @@ class WorkspaceController(
     // --- home screen items ---
 
     fun addApp(componentKey: String, position: GridPosition? = null): String? {
-        val target = position ?: findFreeCell() ?: return null
+        val target = position ?: findFreeCellOrNewPage() ?: return null
         if (!isFree(GridRect.of(target, 1, 1))) return null
         val id = newId()
         return if (mutate { it.copy(items = it.items + WorkspaceItem.AppIcon(id, target, componentKey)) }) id else null
@@ -142,7 +142,7 @@ class WorkspaceController(
         position: GridPosition? = null,
     ): String? {
         val target = position
-            ?: findFreeRect(spanColumns, spanRows)?.let { GridPosition(it.page, it.column, it.row) }
+            ?: findFreeRectOrNewPage(spanColumns, spanRows)?.let { GridPosition(it.page, it.column, it.row) }
             ?: return null
         if (!isFree(GridRect.of(target, spanColumns, spanRows))) return null
         val id = newId()
@@ -241,6 +241,27 @@ class WorkspaceController(
         return GridPosition(rect.page, rect.column, rect.row)
     }
 
+    /** Section 16: if every existing page is full, add one more page and place there — rather than failing silently. */
+    private fun findFreeCellOrNewPage(): GridPosition? {
+        findFreeCell()?.let { return it }
+        val newPage = addPageIfUnderLimit() ?: return null
+        return GridPosition(newPage, 0, 0)
+    }
+
+    /** Section 49: same auto-page behavior for widgets, rejecting outright only if the span can never fit any page. */
+    private fun findFreeRectOrNewPage(spanColumns: Int, spanRows: Int): GridRect? {
+        if (spanColumns <= 0 || spanRows <= 0 || spanColumns > gridSpec.columns || spanRows > gridSpec.rows) return null
+        findFreeRect(spanColumns, spanRows)?.let { return it }
+        val newPage = addPageIfUnderLimit() ?: return null
+        return GridRect(newPage, 0, 0, spanColumns, spanRows)
+    }
+
+    private fun addPageIfUnderLimit(): Int? {
+        if (workspace.pageCount >= MAX_AUTO_PAGES) return null
+        val newPage = addPage()
+        return if (newPage >= 0) newPage else null
+    }
+
     private fun findFreeRect(spanColumns: Int, spanRows: Int): GridRect? {
         for (page in 0 until workspace.pageCount) {
             firstFreeRectOnPage(page, spanColumns, spanRows)?.let { return it }
@@ -267,4 +288,8 @@ class WorkspaceController(
     }
 
     private fun newId(): String = UUID.randomUUID().toString()
+
+    companion object {
+        private const val MAX_AUTO_PAGES = 20
+    }
 }

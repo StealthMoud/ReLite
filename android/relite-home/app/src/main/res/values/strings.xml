@@ -26,4 +26,6 @@
     <string name="move_no_room">No room on that page</string>
     <string name="action_add_page">Add page</string>
     <string name="action_remove_page">Remove this empty page</string>
+    <string name="action_widgets">Widgets</string>
+    <string name="no_widgets_available">No widgets available</string>
 </resources>

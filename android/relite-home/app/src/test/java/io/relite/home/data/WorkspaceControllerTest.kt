@@ -49,9 +49,15 @@ class WorkspaceControllerTest {
     }
 
     @Test
-    fun `addApp fails once every cell on every page is full`() {
+    fun `addApp auto-adds a page once every existing page is full`() {
         repeat(16) { i -> assertNotNull(controller.addApp("io.relite.app$i/Main")) }
-        assertNull(controller.addApp("io.relite.overflow/Main"))
+        assertEquals(1, controller.current().pageCount)
+
+        val overflowId = controller.addApp("io.relite.overflow/Main")
+
+        assertNotNull(overflowId)
+        assertEquals(2, controller.current().pageCount)
+        assertEquals(1, controller.current().items.first { it.id == overflowId }.position.page)
     }
 
     @Test

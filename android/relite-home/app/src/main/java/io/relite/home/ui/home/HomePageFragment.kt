@@ -33,6 +33,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     var onAppLaunch: ((String) -> Unit)? = null
     var onFolderOpen: ((WorkspaceItem.FolderIcon) -> Unit)? = null
     var onWorkspaceChanged: (() -> Unit)? = null
+    var onAddWidgetRequested: (() -> Unit)? = null
 
     private lateinit var grid: WorkspaceGridLayout
     private var pageIndex: Int = 0
@@ -290,12 +291,14 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     private fun showPageManagementMenu(app: ReliteHomeApplication, pageIsEmpty: Boolean) {
         val canRemove = pageIsEmpty && pageIndex > 0
         val options = buildList {
+            add(getString(R.string.action_widgets))
             add(getString(R.string.action_add_page))
             if (canRemove) add(getString(R.string.action_remove_page))
         }
         android.app.AlertDialog.Builder(requireContext())
             .setItems(options.toTypedArray()) { _, which ->
                 when (options[which]) {
+                    getString(R.string.action_widgets) -> onAddWidgetRequested?.invoke()
                     getString(R.string.action_add_page) -> {
                         app.workspaceController.addPage()
                         onWorkspaceChanged?.invoke()
