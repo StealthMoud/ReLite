@@ -37,6 +37,15 @@ jobs:
           assert len(profiles) == 3, profiles;
           print('profiles/*.yaml valid:', sorted(profiles))"
 
+      - name: Validate device.yaml schemas
+        run: python -c "
+          import pathlib
+          from relite.device_metadata import load_device_metadata
+          for p in pathlib.Path('devices').glob('*/*/device.yaml'):
+              m = load_device_metadata(p)
+              print(f'{p}: OK ({m.model}, {len(m.benchmark_targets)} benchmark targets, {len(m.pss_targets)} PSS targets)')
+          "
+
       - name: Check generated package docs are up to date
         run: |
           for device_dir in devices/*/*/; do

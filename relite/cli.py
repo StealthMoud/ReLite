@@ -741,9 +741,8 @@ def benchmark(ctx: click.Context, label: str, runs: int, skip_apps: bool) -> Non
     """
     import json as _json
 
-    import yaml
-
     from relite.benchmark import RECOMMENDED_MIN_RUNS, run_benchmark
+    from relite.device_metadata import load_device_metadata
 
     if runs < 1:
         console.print(f"[red]--runs must be >= 1, got {runs}.[/red]")
@@ -763,9 +762,9 @@ def benchmark(ctx: click.Context, label: str, runs: int, skip_apps: bool) -> Non
     if device_dir and not skip_apps:
         device_yaml_path = device_dir / "device.yaml"
         if device_yaml_path.exists():
-            device_yaml = yaml.safe_load(device_yaml_path.read_text()) or {}
-            app_targets = device_yaml.get("benchmark_targets", [])
-            pss_targets = device_yaml.get("pss_targets", [])
+            metadata = load_device_metadata(device_yaml_path)
+            app_targets = [t.to_dict() for t in metadata.benchmark_targets]
+            pss_targets = [t.to_dict() for t in metadata.pss_targets]
 
     console.print(f"Running benchmark '{label}' ({len(app_targets)} app target(s), "
                   f"{len(pss_targets)} PSS target(s), {runs} run(s) each)...")

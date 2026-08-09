@@ -86,5 +86,21 @@ pss_targets:
     activity: .ui.MainActivity
 
 support_status: validated-against-real-device
-bootloader_investigated: false
-gsi_investigated: false
+
+# Section 26 (v0.3.0): replaced the stale `bootloader_investigated: false`
+# / `gsi_investigated: false` booleans — both were investigated on real
+# hardware in an earlier pass (see research/bootloader.md and
+# research/treble-gsi.md for full evidence) but nothing had gone back to
+# update these two flags. Verdicts below are exactly what those research
+# docs already concluded — no new findings fabricated here.
+bootloader:
+  investigated: true
+  state: locked
+  verdict_date: "2026-08-08"
+  evidence: research/bootloader.md
+
+gsi:
+  investigated: true
+  verdict: possibly-supported-blocked-by-bootloader
+  verdict_date: "2026-08-08"
+  evidence: research/treble-gsi.md
