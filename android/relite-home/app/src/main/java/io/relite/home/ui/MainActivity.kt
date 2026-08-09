@@ -6,6 +6,7 @@ import android.content.pm.LauncherApps
 import android.os.Bundle
 import android.os.Process
 import android.view.View
+import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.viewpager2.widget.ViewPager2
@@ -55,17 +56,27 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        val launcherApps = getSystemService(LauncherApps::class.java)
         val allApps = app.appRepository.loadAll().associateBy { it.componentKey }
         dock.bind(
             componentKeys = workspace.dockComponentKeys,
             allApps = allApps,
-            launcherApps = launcherApps,
+            iconCache = app.iconCache,
             onAppClick = { launchApp(it.componentKey) },
             onAppsButtonClick = { showAppDrawer() },
         )
 
         drawerContainer.visibility = View.GONE
+
+        // ReLite Home is the home screen — back should close the drawer if
+        // it's open, and otherwise do nothing (never exit to another app).
+        // Using OnBackPressedCallback rather than overriding the deprecated
+        // Activity.onBackPressed() means there's no super call to forget
+        // and no ambiguity about what "not consuming" the event would do.
+        onBackPressedDispatcher.addCallback(this) {
+            if (drawerContainer.visibility == View.VISIBLE) {
+                hideAppDrawer()
+            }
+        }
     }
 
     private fun launchApp(componentKey: String) {
@@ -97,16 +108,13 @@ class MainActivity : AppCompatActivity() {
         drawerContainer.visibility = View.GONE
     }
 
-    override fun onBackPressed() {
-        if (drawerContainer.visibility == View.VISIBLE) {
-            hideAppDrawer()
-        } else {
-            // ReLite Home is the home screen — back should not exit to another app.
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        app.appRepository.stop()
-    }
+    // No onDestroy() override here on purpose: appRepository is owned by
+    // ReliteHomeApplication for the process's entire lifetime, not by any
+    // one Activity instance (section 11, v0.2.0). Activity destruction can
+    // happen from a configuration change or task recreation while the
+    // process — and the callback registration — stays alive; a prior
+    // version called appRepository.stop() from here, which unregistered
+    // the LauncherApps callback on the first recreation and silently
+    // stopped the drawer from ever refreshing again for the rest of the
+    // process's life.
 }

@@ -1,7 +1,6 @@
 package io.relite.home.ui.folder
 
 import android.app.Dialog
-import android.content.pm.LauncherApps
 import android.os.Bundle
 import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.GridLayoutManager
@@ -10,7 +9,6 @@ import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
 import io.relite.home.data.AppEntry
 import io.relite.home.ui.drawer.AppDrawerAdapter
-import io.relite.home.util.IconCache
 
 /**
  * Large, rounded folder presentation (master plan section 19) — a plain
@@ -24,9 +22,6 @@ class FolderSheetDialog : DialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val app = requireActivity().application as ReliteHomeApplication
-        val launcherApps = requireContext().getSystemService(LauncherApps::class.java)
-        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
-        val iconCache = IconCache(launcherApps, iconSizePx)
 
         val componentKeys = requireArguments().getStringArrayList(ARG_COMPONENT_KEYS).orEmpty()
         val allApps = app.appRepository.loadAll().associateBy { it.componentKey }
@@ -37,7 +32,7 @@ class FolderSheetDialog : DialogFragment() {
             requireArguments().getString(ARG_LABEL).orEmpty()
 
         val adapter = AppDrawerAdapter(
-            iconCache = iconCache,
+            iconCache = app.iconCache,
             onAppClick = { onAppLaunch?.invoke(it); dismiss() },
             onAppLongClick = { _, _ -> false },
         )

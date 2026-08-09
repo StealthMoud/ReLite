@@ -1,6 +1,5 @@
 package io.relite.home.ui.home
 
-import android.content.pm.LauncherApps
 import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.Fragment
@@ -9,7 +8,6 @@ import androidx.recyclerview.widget.RecyclerView
 import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
 import io.relite.home.data.WorkspaceItem
-import io.relite.home.util.IconCache
 
 /** One page of the home-screen workspace grid. */
 class HomePageFragment : Fragment(R.layout.fragment_home_page) {
@@ -21,16 +19,13 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val pageIndex = requireArguments().getInt(ARG_PAGE_INDEX)
         val app = requireActivity().application as ReliteHomeApplication
-        val launcherApps = requireContext().getSystemService(LauncherApps::class.java)
-        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
-        val iconCache = IconCache(launcherApps, iconSizePx)
 
         val pageItems = app.workspaceRepository.load().items.filter { it.position.page == pageIndex }
         val labelsByComponentKey = app.appRepository.loadAll().associateBy { it.componentKey }
 
         val adapter = WorkspacePageAdapter(
             items = pageItems,
-            iconCache = iconCache,
+            iconCache = app.iconCache,
             labelFor = { item -> labelFor(item, labelsByComponentKey) },
             onClick = { item ->
                 when (item) {

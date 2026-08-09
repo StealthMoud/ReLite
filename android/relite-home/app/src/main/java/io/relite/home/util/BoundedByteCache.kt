@@ -32,6 +32,11 @@ class BoundedByteCache<K, V>(private val maxBytes: Int, private val sizeOf: (V) 
 
     fun keys(): Set<K> = entries.keys.toSet()
 
+    fun clear() {
+        entries.clear()
+        currentBytes = 0
+    }
+
     private fun evictToFit() {
         val iterator = entries.entries.iterator()
         while (currentBytes > maxBytes && iterator.hasNext()) {

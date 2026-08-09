@@ -1,6 +1,5 @@
 package io.relite.home.ui.drawer
 
-import android.content.pm.LauncherApps
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -12,8 +11,8 @@ import androidx.recyclerview.widget.RecyclerView
 import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
 import io.relite.home.data.AppEntry
+import io.relite.home.data.AppRepository
 import io.relite.home.util.AppSearch
-import io.relite.home.util.IconCache
 
 /**
  * Alphabetical, searchable app drawer. No network, no ads, no "recommended
@@ -23,17 +22,15 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
 
     private lateinit var adapter: AppDrawerAdapter
     private var allApps: List<AppEntry> = emptyList()
+    private var appsChangedSubscription: AppRepository.Subscription? = null
 
     var onLaunch: ((AppEntry) -> Unit)? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val app = requireActivity().application as ReliteHomeApplication
-        val launcherApps = requireContext().getSystemService(LauncherApps::class.java)
-        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
-        val iconCache = IconCache(launcherApps, iconSizePx)
 
         adapter = AppDrawerAdapter(
-            iconCache = iconCache,
+            iconCache = app.iconCache,
             onAppClick = { onLaunch?.invoke(it) },
             onAppLongClick = { _, _ -> false },
         )
@@ -46,7 +43,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         allApps = AppSearch.alphabetical(app.appRepository.loadAll())
         adapter.submitList(allApps)
 
-        app.appRepository.onAppsChanged {
+        appsChangedSubscription = app.appRepository.onAppsChanged {
             allApps = AppSearch.alphabetical(app.appRepository.loadAll())
             adapter.submitList(applyCurrentQuery())
         }
@@ -63,6 +60,12 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     }
 
     private var currentQuery: String = ""
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        appsChangedSubscription?.dispose()
+        appsChangedSubscription = null
+    }
 
     private fun applyCurrentQuery(): List<AppEntry> = AppSearch.search(allApps, currentQuery)
 

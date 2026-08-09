@@ -5,9 +5,23 @@
         Deliberately no INTERNET permission (master plan section 20).
         Add it only when a concrete, user-visible feature genuinely
         requires it, and document why in this file when that happens.
+
+        Section 24 (v0.2.0) removed two permissions that were declared but
+        not actually needed:
+
+        - QUERY_ALL_PACKAGES: every app-discovery path in this codebase
+          goes through LauncherApps (see data/AppRepository.kt), and the
+          system exempts the app holding the default-launcher role from
+          package-visibility filtering when using that API.
+        - BIND_APPWIDGET: this is only required by AppWidget *providers*,
+          not *hosts*. ReLite Home hosts widgets via the standard
+          ACTION_APPWIDGET_PICK system picker + AppWidgetHost
+          (ui/widget/), which grants the per-widget bind itself; it is
+          also a signature|privileged permission an ordinary third-party
+          app can never actually hold, so declaring it did nothing but
+          get flagged by lint.
     -->
-    <uses-permission android:name="android.permission.BIND_APPWIDGET" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
 
     <application
         android:name=".ReliteHomeApplication"

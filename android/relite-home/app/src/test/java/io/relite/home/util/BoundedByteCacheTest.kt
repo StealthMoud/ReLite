@@ -90,4 +90,22 @@ class BoundedByteCacheTest {
 
         assertEquals(setOf("b"), cache.keys())
     }
+
+    @Test
+    fun `clear drops every entry and resets byte accounting`() {
+        // Backs IconCache.clear(), called from onTrimMemory() under real
+        // memory pressure (section 13, v0.2.0) — icons are cheap to
+        // re-render from LauncherApps, so there's no reason to keep any of
+        // them once the system says memory is tight.
+        val cache = BoundedByteCache<String, FakeIcon>(maxBytes = 1000) { it.sizeBytes }
+        cache.put("a", FakeIcon(100))
+        cache.put("b", FakeIcon(100))
+
+        cache.clear()
+
+        assertEquals(0, cache.bytesUsed)
+        assertEquals(0, cache.size)
+        assertNull(cache.get("a"))
+        assertNull(cache.get("b"))
+    }
 }

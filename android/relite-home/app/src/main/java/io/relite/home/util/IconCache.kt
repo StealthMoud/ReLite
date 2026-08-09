@@ -60,6 +60,14 @@ class IconCache(
         staleKeys.forEach { cache.remove(it) }
     }
 
+    /** Drop every cached icon — called from [io.relite.home.ReliteHomeApplication]'s
+     * onTrimMemory() under real memory pressure. Icons are cheap to
+     * re-render on demand, so there's no reason to hold onto them once the
+     * system says memory is tight. */
+    fun clear() {
+        cache.clear()
+    }
+
     companion object {
         // ~6 MB: enough for several screens' worth of icons at typical
         // launcher icon sizes without letting the cache grow unbounded.

@@ -17,6 +17,11 @@ class AppRepository(context: Context) {
     private val launcherApps = appContext.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
     private val user: UserHandle = Process.myUserHandle()
 
+    /** Dispose to stop receiving [AppRepository] change notifications. */
+    fun interface Subscription {
+        fun dispose()
+    }
+
     private val listeners = mutableListOf<() -> Unit>()
 
     private val callback = object : LauncherApps.Callback() {
@@ -37,8 +42,18 @@ class AppRepository(context: Context) {
         launcherApps.unregisterCallback(callback)
     }
 
-    fun onAppsChanged(listener: () -> Unit) {
+    /**
+     * Registers [listener] and returns a [Subscription] the caller must
+     * dispose when it no longer wants updates — a fragment view being
+     * destroyed and recreated (e.g. every time the app drawer is shown)
+     * without disposing its old listener used to grow this list forever,
+     * each entry holding a closure over the fragment/adapter it belonged
+     * to, so destroyed drawer instances kept receiving — and being kept
+     * alive by — every future package-change callback.
+     */
+    fun onAppsChanged(listener: () -> Unit): Subscription {
         listeners.add(listener)
+        return Subscription { listeners.remove(listener) }
     }
 
     private fun notifyChanged() {

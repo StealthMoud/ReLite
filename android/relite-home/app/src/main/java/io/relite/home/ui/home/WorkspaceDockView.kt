@@ -1,7 +1,6 @@
 package io.relite.home.ui.home
 
 import android.content.Context
-import android.content.pm.LauncherApps
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.widget.ImageButton
@@ -27,13 +26,11 @@ class WorkspaceDockView @JvmOverloads constructor(
     fun bind(
         componentKeys: List<String>,
         allApps: Map<String, AppEntry>,
-        launcherApps: LauncherApps,
+        iconCache: IconCache,
         onAppClick: (AppEntry) -> Unit,
         onAppsButtonClick: () -> Unit,
     ) {
         removeAllViews()
-        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
-        val iconCache = IconCache(launcherApps, iconSizePx)
         val inflater = LayoutInflater.from(context)
 
         for (key in componentKeys) {
