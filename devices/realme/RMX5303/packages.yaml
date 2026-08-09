@@ -36,8 +36,14 @@
     declares a dependency on it (checked via dumpsys package cross-refs).
     Drives Hot Apps/Hot Games promotion and install notifications. Losing
     it as an install source is an acceptable tradeoff since Play Store is
-    installed and preferred by most users; still not touched in `safe`
-    because bundled OEM-app updates route through it.
+    installed and preferred by most users; high-confidence enough to be
+    one of the three packages `safe` disables — see docs/profiles.md.
+    (v0.2.0 correction: an earlier version of this text claimed the safe
+    profile left this package alone, contradicting both the action map
+    above and docs/profiles.md's description of what `safe` removes on
+    this device. Bundled-app updates for apps already installed don't
+    require the App Market to remain installed/enabled itself — Play
+    Store or manual APK updates still work.)
   dependencies: []
   rollback:
     supported: true
