@@ -5,6 +5,7 @@ import android.content.ComponentCallbacks2
 import android.content.pm.LauncherApps
 import io.relite.home.data.AppRepository
 import io.relite.home.data.FileStorage
+import io.relite.home.data.LauncherGridSpec
 import io.relite.home.data.WorkspaceController
 import io.relite.home.data.WorkspaceRepository
 import io.relite.home.util.IconCache
@@ -38,13 +39,11 @@ class ReliteHomeApplication : Application() {
         appRepository = AppRepository(this)
         appRepository.start()
 
-        val workspaceRepository = WorkspaceRepository(FileStorage(File(filesDir, "workspace.json")))
-        workspaceController = WorkspaceController(
-            workspaceRepository,
-            gridColumns = GRID_COLUMNS,
-            gridRows = GRID_ROWS,
-            dockCapacity = DOCK_CAPACITY,
+        val workspaceRepository = WorkspaceRepository(
+            FileStorage(File(filesDir, "workspace.json")),
+            GRID_SPEC,
         )
+        workspaceController = WorkspaceController(workspaceRepository, GRID_SPEC)
         appRepository.onAppsChanged {
             // A package can disappear (uninstall, or ReLite's own
             // `pm uninstall --user 0`) at any time; drop any shortcut, dock
@@ -73,9 +72,11 @@ class ReliteHomeApplication : Application() {
     }
 
     companion object {
-        const val GRID_COLUMNS = 4
-        const val GRID_ROWS = 5
-        const val DOCK_CAPACITY = 5
+        // Section 18 (v0.4.0): the one authoritative grid geometry —
+        // WorkspaceController and WorkspaceRepository both consume this
+        // same LauncherGridSpec instance, rather than each independently
+        // hardcoding column/row/dock-capacity constants.
+        val GRID_SPEC = LauncherGridSpec.RMX5303
     }
 
     override fun onTrimMemory(level: Int) {

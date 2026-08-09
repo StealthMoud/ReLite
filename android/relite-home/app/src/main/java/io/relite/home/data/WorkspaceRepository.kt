@@ -8,26 +8,51 @@ import org.json.JSONObject
  * Kotlin + org.json only, so it's fully unit testable with a fake Storage
  * — no Context, no Robolectric.
  */
-class WorkspaceRepository(private val storage: Storage) {
+class WorkspaceRepository(private val storage: Storage, private val gridSpec: LauncherGridSpec = LauncherGridSpec.RMX5303) {
+
+    /**
+     * Section 25 (v0.4.0): why the last [load] fell back to an empty
+     * workspace, distinguishing "first run" (null, no prior data at all)
+     * from "corrupt JSON", "schema newer than this build understands", or
+     * "parsed and schema-supported but failed structural validation" —
+     * rather than every one of those cases looking identical to a caller.
+     */
+    var lastLoadIssue: String? = null
+        private set
 
     fun load(): Workspace {
+        lastLoadIssue = null
         val raw = storage.read() ?: return Workspace.empty() // no prior data — genuinely a first run
         return try {
-            deserialize(raw)
-        } catch (_: Exception) {
-            // Corrupt or foreign-schema layout file: fail safe to an empty
+            val workspace = deserialize(raw)
+            val problems = validate(workspace, gridSpec)
+            if (problems.isNotEmpty()) {
+                lastLoadIssue = "structural validation failed: ${problems.joinToString("; ")}"
+                storage.backupCorrupt(raw)
+                Workspace.empty()
+            } else {
+                workspace
+            }
+        } catch (e: UnsupportedSchemaException) {
+            lastLoadIssue = e.message
+            storage.backupCorrupt(raw)
+            Workspace.empty()
+        } catch (e: Exception) {
+            // Corrupt or malformed layout file: fail safe to an empty
             // *in-memory* workspace rather than crashing the launcher on
             // startup — but preserve the actual bad content on disk
             // first (section 50) so it isn't silently destroyed the
             // moment any edit triggers a save() with the empty result.
+            lastLoadIssue = "corrupt: ${e.message}"
             storage.backupCorrupt(raw)
             Workspace.empty()
         }
     }
 
-    fun save(workspace: Workspace) {
-        storage.write(serialize(workspace))
-    }
+    /** Returns true once the workspace is durably persisted — see [Storage.write]. */
+    fun save(workspace: Workspace): Boolean = storage.write(serialize(workspace))
+
+    private class UnsupportedSchemaException(message: String) : Exception(message)
 
     internal fun serialize(workspace: Workspace): String {
         val root = JSONObject()
@@ -46,7 +71,9 @@ class WorkspaceRepository(private val storage: Storage) {
     internal fun deserialize(raw: String): Workspace {
         val root = JSONObject(raw)
         val schema = root.optInt("schema", 1)
-        require(schema == SCHEMA_VERSION) { "unsupported workspace schema $schema" }
+        if (schema !in SUPPORTED_SCHEMAS) {
+            throw UnsupportedSchemaException("unsupported workspace schema $schema (supported: $SUPPORTED_SCHEMAS)")
+        }
 
         val dock = mutableListOf<String>()
         val dockArray = root.optJSONArray("dock") ?: JSONArray()
@@ -90,6 +117,7 @@ class WorkspaceRepository(private val storage: Storage) {
                 json.put("appWidgetId", item.appWidgetId)
                 json.put("spanColumns", item.spanColumns)
                 json.put("spanRows", item.spanRows)
+                json.put("providerComponent", item.providerComponent)
             }
         }
         return json
@@ -108,15 +136,88 @@ class WorkspaceRepository(private val storage: Storage) {
             TYPE_WIDGET -> WorkspaceItem.WidgetIcon(
                 id, position,
                 json.getInt("appWidgetId"), json.getInt("spanColumns"), json.getInt("spanRows"),
+                // Section 22: a schema-1 file (pre-dating providerComponent)
+                // migrates in-place rather than being rejected — the field
+                // is simply unknown until the widget is next re-added.
+                providerComponent = json.optString("providerComponent", ""),
             )
             else -> throw IllegalArgumentException("unknown workspace item type: $type")
         }
     }
 
     companion object {
-        private const val SCHEMA_VERSION = 1
+        private const val SCHEMA_VERSION = 2
+        private val SUPPORTED_SCHEMAS = setOf(1, 2)
         private const val TYPE_APP = "app"
         private const val TYPE_FOLDER = "folder"
         private const val TYPE_WIDGET = "widget"
+
+        private val COMPONENT_KEY_RE = Regex("^[a-zA-Z0-9_.]+/[a-zA-Z0-9_.]+$")
+
+        /**
+         * Section 23: a deserialized workspace is only trusted after
+         * structural validation, not merely because the JSON parsed.
+         * Returns a human-readable list of every problem found (empty =
+         * valid) rather than stopping at the first one, so a single bad
+         * layout file's diagnostic message is actually useful.
+         */
+        internal fun validate(workspace: Workspace, spec: LauncherGridSpec): List<String> {
+            val problems = mutableListOf<String>()
+
+            if (workspace.pageCount < 1) problems += "pageCount ${workspace.pageCount} must be >= 1"
+
+            val seenIds = mutableSetOf<String>()
+            for (item in workspace.items) {
+                if (!seenIds.add(item.id)) problems += "duplicate item id '${item.id}'"
+
+                val rect = GridRect.of(item)
+                if (!rect.isWithinBounds(spec, workspace.pageCount)) {
+                    problems += "item '${item.id}' rect $rect is out of bounds for $spec / pageCount=${workspace.pageCount}"
+                }
+
+                when (item) {
+                    is WorkspaceItem.AppIcon ->
+                        if (!COMPONENT_KEY_RE.matches(item.componentKey)) {
+                            problems += "item '${item.id}' has malformed componentKey '${item.componentKey}'"
+                        }
+                    is WorkspaceItem.FolderIcon ->
+                        for (key in item.itemComponentKeys) {
+                            if (!COMPONENT_KEY_RE.matches(key)) {
+                                problems += "folder '${item.id}' has malformed member componentKey '$key'"
+                            }
+                        }
+                    is WorkspaceItem.WidgetIcon -> {
+                        if (item.providerComponent.isNotEmpty() && !COMPONENT_KEY_RE.matches(item.providerComponent)) {
+                            problems += "widget '${item.id}' has malformed providerComponent '${item.providerComponent}'"
+                        }
+                        if (item.appWidgetId <= 0) problems += "widget '${item.id}' has invalid appWidgetId ${item.appWidgetId}"
+                    }
+                }
+            }
+
+            // Rectangle-overlap check (section 20): every pair, not just
+            // exact single-cell equality — O(n^2) but n is a handful of
+            // items per device, never a performance concern.
+            val rects = workspace.items.map { it.id to GridRect.of(it) }
+            for (i in rects.indices) {
+                for (j in i + 1 until rects.size) {
+                    if (rects[i].second.intersects(rects[j].second)) {
+                        problems += "items '${rects[i].first}' and '${rects[j].first}' overlap"
+                    }
+                }
+            }
+
+            if (workspace.dockComponentKeys.size > spec.dockCapacity) {
+                problems += "dock has ${workspace.dockComponentKeys.size} entries, capacity is ${spec.dockCapacity}"
+            }
+            if (workspace.dockComponentKeys.toSet().size != workspace.dockComponentKeys.size) {
+                problems += "dock has duplicate entries"
+            }
+            for (key in workspace.dockComponentKeys) {
+                if (!COMPONENT_KEY_RE.matches(key)) problems += "dock has malformed componentKey '$key'"
+            }
+
+            return problems
+        }
     }
 }

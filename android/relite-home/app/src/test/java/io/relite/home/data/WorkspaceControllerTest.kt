@@ -15,8 +15,8 @@ class WorkspaceControllerTest {
 
     @Before
     fun setUp() {
-        repository = WorkspaceRepository(InMemoryStorage())
-        controller = WorkspaceController(repository, gridColumns = 4, gridRows = 4, dockCapacity = 5)
+        repository = WorkspaceRepository(InMemoryStorage(), TEST_SPEC)
+        controller = WorkspaceController(repository, TEST_SPEC)
     }
 
     // --- addApp / removeItem / moveItem ---
@@ -29,7 +29,7 @@ class WorkspaceControllerTest {
         assertEquals(GridPosition(0, 0, 0), item.position)
 
         // persisted, not just in-memory
-        val reloaded = WorkspaceController(repository, 4, 4, 5)
+        val reloaded = WorkspaceController(repository, TEST_SPEC)
         assertEquals(1, reloaded.current().items.size)
     }
 
@@ -207,7 +207,9 @@ class WorkspaceControllerTest {
 
     @Test
     fun `addWidget then resizeWidget then removeWidget`() {
-        val id = controller.addWidget(appWidgetId = 42, spanColumns = 1, spanRows = 1)!!
+        val id = controller.addWidget(
+            appWidgetId = 42, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock",
+        )!!
         assertTrue(controller.resizeWidget(id, spanColumns = 2, spanRows = 2))
 
         val widget = controller.current().items.single() as WorkspaceItem.WidgetIcon
@@ -258,7 +260,7 @@ class WorkspaceControllerTest {
 
     @Test
     fun `removeShortcutsForPackage keeps widgets untouched`() {
-        controller.addWidget(appWidgetId = 1, spanColumns = 1, spanRows = 1)
+        controller.addWidget(appWidgetId = 1, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
         controller.removeShortcutsForPackage("io.relite.anything")
         assertEquals(1, controller.current().items.size)
     }
@@ -273,5 +275,106 @@ class WorkspaceControllerTest {
 
         controller.reload()
         assertEquals(1, controller.current().items.size)
+    }
+
+    // --- rectangle-based widget geometry (section 20) ---
+
+    @Test
+    fun `addWidget occupies a rectangle and blocks a 1x1 icon anywhere inside it`() {
+        val widgetId = controller.addWidget(
+            appWidgetId = 1, spanColumns = 2, spanRows = 2, providerComponent = "io.relite.widgets/Clock",
+            position = GridPosition(0, 0, 0),
+        )
+        assertNotNull(widgetId)
+
+        // every one of the 4 cells the 2x2 widget covers must be blocked
+        assertNull(controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0)))
+        assertNull(controller.addApp("io.relite.a/Main", GridPosition(0, 1, 0)))
+        assertNull(controller.addApp("io.relite.a/Main", GridPosition(0, 0, 1)))
+        assertNull(controller.addApp("io.relite.a/Main", GridPosition(0, 1, 1)))
+        // just outside the rectangle is fine
+        assertNotNull(controller.addApp("io.relite.a/Main", GridPosition(0, 2, 0)))
+    }
+
+    @Test
+    fun `addWidget refuses a rectangle that overlaps an existing widget`() {
+        controller.addWidget(
+            appWidgetId = 1, spanColumns = 2, spanRows = 2, providerComponent = "io.relite.widgets/Clock",
+            position = GridPosition(0, 0, 0),
+        )
+        val overlapping = controller.addWidget(
+            appWidgetId = 2, spanColumns = 2, spanRows = 2, providerComponent = "io.relite.widgets/Clock",
+            position = GridPosition(0, 1, 1),
+        )
+        assertNull(overlapping)
+    }
+
+    @Test
+    fun `addWidget refuses a rectangle that runs past the right or bottom edge`() {
+        assertNull(
+            controller.addWidget(
+                appWidgetId = 1, spanColumns = 3, spanRows = 1, providerComponent = "io.relite.widgets/Clock",
+                position = GridPosition(0, 2, 0), // TEST_SPEC has 4 columns: column 2 + span 3 runs off the edge
+            ),
+        )
+        assertNull(
+            controller.addWidget(
+                appWidgetId = 1, spanColumns = 1, spanRows = 3, providerComponent = "io.relite.widgets/Clock",
+                position = GridPosition(0, 0, 2), // TEST_SPEC has 4 rows: row 2 + span 3 runs off the edge
+            ),
+        )
+    }
+
+    @Test
+    fun `addWidget refuses a zero or negative span`() {
+        assertNull(controller.addWidget(appWidgetId = 1, spanColumns = 0, spanRows = 1, providerComponent = "a/B"))
+        assertNull(controller.addWidget(appWidgetId = 1, spanColumns = 1, spanRows = -1, providerComponent = "a/B"))
+    }
+
+    @Test
+    fun `resizeWidget refuses growing into an occupied cell`() {
+        val widgetId = controller.addWidget(
+            appWidgetId = 1, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock",
+            position = GridPosition(0, 0, 0),
+        )!!
+        controller.addApp("io.relite.blocker/Main", GridPosition(0, 1, 0))
+
+        assertFalse(controller.resizeWidget(widgetId, spanColumns = 2, spanRows = 1))
+        val widget = controller.current().items.single { it.id == widgetId } as WorkspaceItem.WidgetIcon
+        assertEquals(1, widget.spanColumns)
+    }
+
+    @Test
+    fun `moveItem refuses a destination whose rectangle overlaps another item`() {
+        val widgetId = controller.addWidget(
+            appWidgetId = 1, spanColumns = 2, spanRows = 2, providerComponent = "io.relite.widgets/Clock",
+            position = GridPosition(0, 0, 0),
+        )!!
+        controller.addApp("io.relite.other/Main", GridPosition(0, 3, 0))
+
+        // moving the 2x2 widget to (2,0) would span columns 2-3, overlapping io.relite.other at (3,0)
+        assertFalse(controller.moveItem(widgetId, GridPosition(0, 2, 0)))
+        val widget = controller.current().items.single { it.id == widgetId }
+        assertEquals(GridPosition(0, 0, 0), widget.position)
+    }
+
+    // --- persistence-failure safety (section 24) ---
+
+    @Test
+    fun `a failed save leaves in-memory state unchanged`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage, TEST_SPEC)
+        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        storage.failWrites = true
+
+        val id = ctrl.addApp("io.relite.a/Main")
+
+        assertNull(id)
+        assertTrue(ctrl.current().items.isEmpty())
+        assertNull(storage.read()) // nothing was ever durably written either
+    }
+
+    private companion object {
+        val TEST_SPEC = LauncherGridSpec(columns = 4, rows = 4, dockCapacity = 5)
     }
 }

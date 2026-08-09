@@ -7,7 +7,17 @@ package io.relite.home.data
  */
 interface Storage {
     fun read(): String?
-    fun write(content: String)
+
+    /**
+     * Returns true once `content` is durably persisted, false if the write
+     * failed. Section 24 (v0.4.0): a caller (`WorkspaceRepository.save`,
+     * ultimately `WorkspaceController.mutate`) must know whether
+     * persistence actually succeeded *before* committing to the new
+     * in-memory state — a write that fails must leave both memory and
+     * disk on the previous, still-good state, not a state that only
+     * exists in memory and disappears the moment the process dies.
+     */
+    fun write(content: String): Boolean
 
     /**
      * Preserve `content` (data that failed to deserialize) somewhere
@@ -22,8 +32,14 @@ interface Storage {
 
 /** Simple in-memory Storage, useful for tests and as a first-run default. */
 class InMemoryStorage(private var content: String? = null) : Storage {
+    /** When true, [write] reports failure without mutating [content] — simulates a persistence failure in tests. */
+    var failWrites: Boolean = false
+
     override fun read(): String? = content
-    override fun write(content: String) {
+
+    override fun write(content: String): Boolean {
+        if (failWrites) return false
         this.content = content
+        return true
     }
 }

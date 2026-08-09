@@ -28,7 +28,10 @@ class WorkspaceRepositoryTest {
                     "f1", GridPosition(0, 1, 0), "Utilities",
                     listOf("io.relite.calc/Main", "io.relite.notes/Main"),
                 ),
-                WorkspaceItem.WidgetIcon("w1", GridPosition(1, 0, 0), appWidgetId = 42, spanColumns = 2, spanRows = 1),
+                WorkspaceItem.WidgetIcon(
+                    "w1", GridPosition(1, 0, 0), appWidgetId = 42, spanColumns = 2, spanRows = 1,
+                    providerComponent = "io.relite.widgets/Clock",
+                ),
             ),
             dockComponentKeys = listOf("io.relite.phone/Main", "io.relite.messages/Main"),
         )
@@ -73,8 +76,9 @@ class WorkspaceRepositoryTest {
     private class BackupTrackingStorage(private var content: String?) : Storage {
         val backedUp = mutableListOf<String>()
         override fun read(): String? = content
-        override fun write(content: String) {
+        override fun write(content: String): Boolean {
             this.content = content
+            return true
         }
         override fun backupCorrupt(content: String) {
             backedUp.add(content)
@@ -87,6 +91,71 @@ class WorkspaceRepositoryTest {
         val repo = WorkspaceRepository(storage)
         val workspace = repo.load()
         assertTrue(workspace.items.isEmpty())
+    }
+
+    @Test
+    fun `schema 1 data migrates in place with an empty providerComponent for widgets`() {
+        // Section 22: a pre-v0.4.0 layout file (no providerComponent field
+        // on widget entries) must still load, not be rejected outright.
+        val v1Json = """
+            {"schema": 1, "pageCount": 1, "dock": [],
+             "items": [{"id": "w1", "position": {"page": 0, "column": 0, "row": 0},
+                        "type": "widget", "appWidgetId": 7, "spanColumns": 1, "spanRows": 1}]}
+        """.trimIndent()
+        val repo = WorkspaceRepository(InMemoryStorage(v1Json))
+        val widget = repo.load().items.single() as WorkspaceItem.WidgetIcon
+        assertEquals(7, widget.appWidgetId)
+        assertEquals("", widget.providerComponent)
+    }
+
+    @Test
+    fun `overlapping items fail validation and preserve the corrupt file instead of silently emptying it`() {
+        // Section 23/25: two items occupying the same cell must never be
+        // trusted just because the JSON parsed and the schema is known.
+        val overlapping = """
+            {"schema": 2, "pageCount": 1, "dock": [],
+             "items": [
+               {"id": "a1", "position": {"page": 0, "column": 0, "row": 0}, "type": "app", "componentKey": "io.relite.a/Main"},
+               {"id": "a2", "position": {"page": 0, "column": 0, "row": 0}, "type": "app", "componentKey": "io.relite.b/Main"}
+             ]}
+        """.trimIndent()
+        val backingUpStorage = BackupTrackingStorage(overlapping)
+        val repo = WorkspaceRepository(backingUpStorage)
+
+        val workspace = repo.load()
+
+        assertTrue(workspace.items.isEmpty())
+        assertEquals(listOf(overlapping), backingUpStorage.backedUp)
+        assertTrue(repo.lastLoadIssue!!.contains("overlap"))
+    }
+
+    @Test
+    fun `an out-of-bounds item fails validation`() {
+        val outOfBounds = """
+            {"schema": 2, "pageCount": 1, "dock": [],
+             "items": [{"id": "a1", "position": {"page": 0, "column": 99, "row": 0}, "type": "app", "componentKey": "io.relite.a/Main"}]}
+        """.trimIndent()
+        val repo = WorkspaceRepository(InMemoryStorage(outOfBounds))
+        assertTrue(repo.load().items.isEmpty())
+        assertTrue(repo.lastLoadIssue!!.contains("out of bounds"))
+    }
+
+    @Test
+    fun `dock exceeding capacity fails validation`() {
+        val tooManyDockEntries = """
+            {"schema": 2, "pageCount": 1,
+             "dock": ["a/A", "b/B", "c/C", "d/D", "e/E", "f/F"], "items": []}
+        """.trimIndent()
+        val repo = WorkspaceRepository(InMemoryStorage(tooManyDockEntries), LauncherGridSpec(4, 5, 5))
+        assertTrue(repo.load().dockComponentKeys.isEmpty())
+        assertTrue(repo.lastLoadIssue!!.contains("capacity"))
+    }
+
+    @Test
+    fun `lastLoadIssue is null after a clean load`() {
+        val repo = WorkspaceRepository(InMemoryStorage())
+        repo.load()
+        assertEquals(null, repo.lastLoadIssue)
     }
 
     @Test

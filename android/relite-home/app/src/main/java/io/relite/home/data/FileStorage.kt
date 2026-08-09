@@ -25,15 +25,16 @@ class FileStorage(private val file: File) : Storage {
             null
         }
 
-    override fun write(content: String) {
+    override fun write(content: String): Boolean {
         file.parentFile?.mkdirs()
         val stream = atomicFile.startWrite()
-        try {
+        return try {
             stream.write(content.toByteArray(StandardCharsets.UTF_8))
             atomicFile.finishWrite(stream)
+            true
         } catch (e: Exception) {
             atomicFile.failWrite(stream)
-            throw e
+            false
         }
     }
 

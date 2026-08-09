@@ -30,6 +30,13 @@ sealed class WorkspaceItem {
         val appWidgetId: Int,
         val spanColumns: Int,
         val spanRows: Int,
+        // Section 21 (v0.4.0): appWidgetId alone is a device-local integer
+        // with no meaning outside this specific install — useless for
+        // diagnostics, layout export, or recovery after the id becomes
+        // invalid (reboot with a stale binding, restore onto a different
+        // device). The originating provider's ComponentName
+        // ("pkg/pkg.WidgetProvider") survives all of that.
+        val providerComponent: String,
     ) : WorkspaceItem()
 }
 
