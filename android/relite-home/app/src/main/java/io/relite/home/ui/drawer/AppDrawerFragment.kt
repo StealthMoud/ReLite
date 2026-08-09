@@ -87,6 +87,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         PopupMenu(requireContext(), anchor).apply {
             menu.add(Menu.NONE, MENU_ID_ADD_TO_HOME, Menu.NONE, R.string.action_add_to_home)
             menu.add(Menu.NONE, MENU_ID_PIN_TO_DOCK, Menu.NONE, R.string.action_pin_to_dock)
+            menu.add(Menu.NONE, MENU_ID_ADD_TO_FOLDER, Menu.NONE, R.string.action_add_to_folder)
             menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             setOnMenuItemClickListener { item ->
                 // Section 86: switch on the stable item id assigned above,
@@ -110,6 +111,14 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
                         }
                         true
                     }
+                    MENU_ID_ADD_TO_FOLDER -> {
+                        io.relite.home.ui.folder.FolderPicker.show(
+                            requireContext(),
+                            app.workspaceController,
+                            entry.componentKey,
+                        ) { onWorkspaceChanged?.invoke() }
+                        true
+                    }
                     MENU_ID_APP_INFO -> {
                         openAppInfo(entry.packageName)
                         true
@@ -129,5 +138,6 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         private const val MENU_ID_ADD_TO_HOME = 1
         private const val MENU_ID_APP_INFO = 2
         private const val MENU_ID_PIN_TO_DOCK = 3
+        private const val MENU_ID_ADD_TO_FOLDER = 4
     }
 }

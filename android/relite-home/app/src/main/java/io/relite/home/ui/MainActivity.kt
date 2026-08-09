@@ -132,8 +132,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openFolder(folder: WorkspaceItem.FolderIcon) {
-        val dialog = FolderSheetDialog.newInstance(folder.label, folder.itemComponentKeys)
+        val dialog = FolderSheetDialog.newInstance(folder.id)
         dialog.onAppLaunch = { launchApp(it.componentKey) }
+        dialog.onWorkspaceChanged = { refreshWorkspace() }
         dialog.show(supportFragmentManager, "folder")
     }
 

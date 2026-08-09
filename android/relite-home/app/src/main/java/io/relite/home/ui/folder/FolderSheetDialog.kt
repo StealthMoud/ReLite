@@ -1,7 +1,12 @@
 package io.relite.home.ui.folder
 
+import android.app.AlertDialog
 import android.app.Dialog
 import android.os.Bundle
+import android.view.Menu
+import android.widget.EditText
+import android.widget.PopupMenu
+import android.widget.TextView
 import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -11,52 +16,158 @@ import io.relite.home.data.AppEntry
 import io.relite.home.ui.drawer.AppDrawerAdapter
 
 /**
- * Large, rounded folder presentation (master plan section 19) — a plain
- * DialogFragment rather than a custom bottom-sheet dependency, since a
- * folder is a short-lived, centered overlay rather than a persistent
- * bottom-anchored surface.
+ * Full folder editor (master plan sections 33-39): open, rename, add
+ * members, remove members, reorder is left as-is (list order == member
+ * order, no separate drag needed for the common small-folder case), and
+ * delete — whether or not the folder still has members. Re-reads the
+ * folder from [io.relite.home.data.WorkspaceController] by id on every
+ * redraw rather than holding a static snapshot, so edits made through this
+ * dialog show up immediately without closing and reopening it.
  */
 class FolderSheetDialog : DialogFragment() {
 
     var onAppLaunch: ((AppEntry) -> Unit)? = null
+    var onWorkspaceChanged: (() -> Unit)? = null
+
+    private lateinit var app: ReliteHomeApplication
+    private lateinit var folderId: String
+    private lateinit var adapter: AppDrawerAdapter
+    private lateinit var titleView: TextView
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        val app = requireActivity().application as ReliteHomeApplication
-
-        val componentKeys = requireArguments().getStringArrayList(ARG_COMPONENT_KEYS).orEmpty()
-        val allApps = app.appRepository.loadAll().associateBy { it.componentKey }
-        val folderApps = componentKeys.mapNotNull { allApps[it] }
+        app = requireActivity().application as ReliteHomeApplication
+        folderId = requireArguments().getString(ARG_FOLDER_ID)!!
 
         val view = layoutInflater.inflate(R.layout.dialog_folder, null)
-        view.findViewById<android.widget.TextView>(R.id.folder_title).text =
-            requireArguments().getString(ARG_LABEL).orEmpty()
+        titleView = view.findViewById(R.id.folder_title)
 
-        val adapter = AppDrawerAdapter(
+        adapter = AppDrawerAdapter(
             iconCache = app.iconCache,
             onAppClick = { onAppLaunch?.invoke(it); dismiss() },
-            onAppLongClick = { _, _ -> false },
+            onAppLongClick = { entry, anchor -> showMemberMenu(entry, anchor); true },
         )
         view.findViewById<RecyclerView>(R.id.folder_recycler).apply {
             layoutManager = GridLayoutManager(requireContext(), app.workspaceController.gridSpec.columns)
-            this.adapter = adapter
+            adapter = this@FolderSheetDialog.adapter
         }
-        adapter.submitList(folderApps)
+
+        titleView.setOnClickListener { showRenameDialog() }
+        view.findViewById<android.widget.Button>(R.id.folder_delete).setOnClickListener {
+            app.workspaceController.removeItem(folderId)
+            onWorkspaceChanged?.invoke()
+            dismiss()
+        }
+        view.findViewById<android.widget.Button>(R.id.folder_add_apps).setOnClickListener {
+            showAddAppsDialog()
+        }
+
+        refresh()
 
         return Dialog(requireContext(), R.style.Theme_ReliteHome_FolderDialog).apply {
             setContentView(view)
         }
     }
 
-    companion object {
-        private const val ARG_LABEL = "label"
-        private const val ARG_COMPONENT_KEYS = "component_keys"
+    /** Re-reads the folder and re-binds the title/member list — called after every mutation. */
+    private fun refresh() {
+        val folder = app.workspaceController.current().items
+            .filterIsInstance<io.relite.home.data.WorkspaceItem.FolderIcon>()
+            .find { it.id == folderId }
+        if (folder == null) {
+            dismiss()
+            return
+        }
+        titleView.text = folder.label
+        val allApps = app.appRepository.loadAll().associateBy { it.componentKey }
+        adapter.submitList(folder.itemComponentKeys.mapNotNull { allApps[it] })
+    }
 
-        fun newInstance(label: String, componentKeys: List<String>): FolderSheetDialog =
-            FolderSheetDialog().apply {
-                arguments = Bundle().apply {
-                    putString(ARG_LABEL, label)
-                    putStringArrayList(ARG_COMPONENT_KEYS, ArrayList(componentKeys))
+    private fun showMemberMenu(entry: AppEntry, anchor: android.view.View) {
+        PopupMenu(requireContext(), anchor).apply {
+            menu.add(Menu.NONE, MENU_ID_REMOVE, Menu.NONE, R.string.action_remove_from_folder)
+            menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    MENU_ID_REMOVE -> {
+                        app.workspaceController.removeAppFromFolder(folderId, entry.componentKey)
+                        onWorkspaceChanged?.invoke()
+                        refresh()
+                        true
+                    }
+                    MENU_ID_APP_INFO -> {
+                        val intent = android.content.Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.fromParts("package", entry.packageName, null),
+                        )
+                        startActivity(intent)
+                        true
+                    }
+                    else -> false
                 }
             }
+        }.show()
+    }
+
+    private fun showRenameDialog() {
+        val folder = app.workspaceController.current().items
+            .filterIsInstance<io.relite.home.data.WorkspaceItem.FolderIcon>()
+            .find { it.id == folderId } ?: return
+        val input = EditText(requireContext()).apply { setText(folder.label) }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.rename_folder_title)
+            .setView(input)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val newLabel = input.text.toString().trim().take(MAX_LABEL_LENGTH)
+                if (newLabel.isNotEmpty()) {
+                    app.workspaceController.renameFolder(folderId, newLabel)
+                    onWorkspaceChanged?.invoke()
+                    refresh()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showAddAppsDialog() {
+        val folder = app.workspaceController.current().items
+            .filterIsInstance<io.relite.home.data.WorkspaceItem.FolderIcon>()
+            .find { it.id == folderId } ?: return
+        val candidates = app.appRepository.loadAll()
+            .filterNot { it.componentKey in folder.itemComponentKeys }
+            .sortedBy { it.label.lowercase() }
+        if (candidates.isEmpty()) return
+
+        lateinit var dialog: AlertDialog
+        val pickerAdapter = AppDrawerAdapter(
+            iconCache = app.iconCache,
+            onAppClick = { entry ->
+                app.workspaceController.addAppToFolder(folderId, entry.componentKey)
+                onWorkspaceChanged?.invoke()
+                refresh()
+                dialog.dismiss()
+            },
+            onAppLongClick = { _, _ -> false },
+        ).apply { submitList(candidates) }
+        val recycler = RecyclerView(requireContext()).apply {
+            layoutManager = GridLayoutManager(requireContext(), app.workspaceController.gridSpec.columns)
+            adapter = pickerAdapter
+        }
+        dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.action_add_apps)
+            .setView(recycler)
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        dialog.show()
+    }
+
+    companion object {
+        private const val ARG_FOLDER_ID = "folder_id"
+        private const val MENU_ID_REMOVE = 1
+        private const val MENU_ID_APP_INFO = 2
+        private const val MAX_LABEL_LENGTH = 40
+
+        fun newInstance(folderId: String): FolderSheetDialog = FolderSheetDialog().apply {
+            arguments = Bundle().apply { putString(ARG_FOLDER_ID, folderId) }
+        }
     }
 }

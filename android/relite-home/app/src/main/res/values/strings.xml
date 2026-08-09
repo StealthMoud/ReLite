@@ -10,4 +10,14 @@
     <string name="action_pin_to_dock">Pin to Dock</string>
     <string name="action_remove_from_dock">Remove from Dock</string>
     <string name="dock_full">Dock is full</string>
+    <string name="action_delete_folder">Delete</string>
+    <string name="action_add_apps">Add apps</string>
+    <string name="action_add_to_folder">Add to Folder</string>
+    <string name="action_remove_from_folder">Remove from folder</string>
+    <string name="new_folder_label">New folder</string>
+    <string name="rename_folder_title">Rename folder</string>
+    <string name="new_folder_option">New folder…</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="workspace_full">No free space on the home screen</string>
 </resources>

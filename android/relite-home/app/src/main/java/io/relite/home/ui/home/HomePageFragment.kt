@@ -204,6 +204,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             menu.add(Menu.NONE, MENU_ID_REMOVE_FROM_HOME, Menu.NONE, R.string.action_remove_from_home)
             if (item is WorkspaceItem.AppIcon) {
                 menu.add(Menu.NONE, MENU_ID_PIN_TO_DOCK, Menu.NONE, R.string.action_pin_to_dock)
+                menu.add(Menu.NONE, MENU_ID_ADD_TO_FOLDER, Menu.NONE, R.string.action_add_to_folder)
                 menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             }
             setOnMenuItemClickListener { menuItem ->
@@ -224,6 +225,17 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                             } else {
                                 onWorkspaceChanged?.invoke()
                             }
+                        }
+                        true
+                    }
+                    MENU_ID_ADD_TO_FOLDER -> {
+                        if (item is WorkspaceItem.AppIcon) {
+                            io.relite.home.ui.folder.FolderPicker.show(
+                                requireContext(),
+                                app.workspaceController,
+                                item.componentKey,
+                                existingHomeItemId = item.id,
+                            ) { onWorkspaceChanged?.invoke() }
                         }
                         true
                     }
@@ -249,6 +261,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         private const val MENU_ID_REMOVE_FROM_HOME = 1
         private const val MENU_ID_APP_INFO = 2
         private const val MENU_ID_PIN_TO_DOCK = 3
+        private const val MENU_ID_ADD_TO_FOLDER = 4
 
         fun newInstance(pageIndex: Int): HomePageFragment = HomePageFragment().apply {
             arguments = Bundle().apply { putInt(ARG_PAGE_INDEX, pageIndex) }
