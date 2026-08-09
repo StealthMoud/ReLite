@@ -17,6 +17,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from relite.device import DeviceProfile
+from relite.sanitize import REDACTED
 from relite.snapshot import SUPPORTED_SCHEMAS, Snapshot
 
 
@@ -24,6 +25,12 @@ class OwnershipStatus(StrEnum):
     MATCH = "match"
     DEVICE_MISMATCH = "device_mismatch"
     FIRMWARE_DIFFERENT = "firmware_different"
+    # Section 11 (v0.4.0): a v1 snapshot predates `device_key` AND had its
+    # raw serial redacted by the privacy sanitizer on save — there is no
+    # remaining signal (pseudonymous key or raw serial) to cryptographically
+    # bind it to *this* physical device. Distinct from DEVICE_MISMATCH,
+    # which asserts a positive mismatch; this asserts "cannot know".
+    LEGACY_OWNERSHIP_UNKNOWN = "legacy_ownership_unknown"
 
 
 @dataclass
@@ -62,6 +69,11 @@ def check_ownership(
     if snapshot.device_key and current_device_key:
         if snapshot.device_key != current_device_key:
             return OwnershipStatus.DEVICE_MISMATCH
+    elif snapshot.device.serial == REDACTED:
+        # No device_key (pre-v0.3.0 snapshot) and the raw serial was
+        # scrubbed by the sanitizer on save — neither identifier survives
+        # to compare against. Never treat this as a match by omission.
+        return OwnershipStatus.LEGACY_OWNERSHIP_UNKNOWN
     elif snapshot.device.serial != current_device.serial:
         return OwnershipStatus.DEVICE_MISMATCH
     if snapshot.device.fingerprint != current_device.fingerprint:
@@ -93,15 +105,19 @@ def validate_baseline(
 
     ownership = check_ownership(raw_snapshot, current_device, current_device_key)
     if ownership != OwnershipStatus.MATCH:
-        return BaselineValidation(
-            status="ownership_error",
-            snapshot=raw_snapshot,
-            ownership=ownership,
-            detail=(
-                "snapshot belongs to a different physical device"
-                if ownership == OwnershipStatus.DEVICE_MISMATCH
-                else "firmware fingerprint differs from the snapshot's — likely an OTA since it was taken"
+        details = {
+            OwnershipStatus.DEVICE_MISMATCH: "snapshot belongs to a different physical device",
+            OwnershipStatus.FIRMWARE_DIFFERENT: (
+                "firmware fingerprint differs from the snapshot's — likely an OTA since it was taken"
             ),
+            OwnershipStatus.LEGACY_OWNERSHIP_UNKNOWN: (
+                "pre-v0.3.0 snapshot has no pseudonymous device key and its raw serial was redacted "
+                "on save — ownership cannot be verified either way. Use "
+                "'relite snapshot --name <n> --set-baseline' to explicitly adopt or replace it."
+            ),
+        }
+        return BaselineValidation(
+            status="ownership_error", snapshot=raw_snapshot, ownership=ownership, detail=details[ownership]
         )
 
     return BaselineValidation(status="valid", snapshot=raw_snapshot, ownership=OwnershipStatus.MATCH)

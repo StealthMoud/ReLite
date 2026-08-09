@@ -218,6 +218,14 @@ def test_restore_from_snapshot_round_trips_animation_scale(fake_client, fake_run
         settings={"global": {"window_animation_scale": "1.0", "transition_animation_scale": "1.0", "animator_duration_scale": "1.0"}},
     )
 
+    # Section 8 (v0.4.0): restore_managed_setting() now reads the setting
+    # back after writing it, so a fake device must actually reflect the
+    # write for `settings_restored` to include it.
+    for key in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"):
+        fake_runner.set_response(
+            ["adb", "-s", "EMULATOR123", "shell", f"settings get global {key}"], stdout="1.0"
+        )
+
     result = restore_from_snapshot(fake_client, snapshot)
 
     assert "com.example.kept" in result.packages_restored

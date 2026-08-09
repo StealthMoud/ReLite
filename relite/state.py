@@ -18,7 +18,9 @@ from typing import Any
 
 from relite.adb import AdbClient
 from relite.classifier import ClassificationDatabase, Profile
+from relite.package_state import PackageState, state_of
 from relite.packages import PackageInfo
+from relite.profile_planner import desired_state_for
 from relite.profiles import load_profiles
 
 #: Integrity states under which the intended profile is still trustworthy
@@ -45,6 +47,15 @@ class DeviceState:
     last_apply_profile: str | None = None
     last_apply_status: str | None = None
     last_apply_unexpected_failures: int = 0
+    # Section 7-8 (v0.4.0): the outcome of the *last* restore/undo attempt,
+    # independent of whether `active_profile` got cleared — a restore with
+    # unverified package/setting reversions must never be silently reported
+    # as "snapshot restored successfully" (relite/restore.py's
+    # `RestoreResult.errors`).
+    last_restore_status: str | None = None
+    last_restore_errors: int = 0
+    last_undo_apply_id: str | None = None
+    last_undo_status: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +66,10 @@ class DeviceState:
             "last_apply_profile": self.last_apply_profile,
             "last_apply_status": self.last_apply_status,
             "last_apply_unexpected_failures": self.last_apply_unexpected_failures,
+            "last_restore_status": self.last_restore_status,
+            "last_restore_errors": self.last_restore_errors,
+            "last_undo_apply_id": self.last_undo_apply_id,
+            "last_undo_status": self.last_undo_status,
         }
 
     @classmethod
@@ -67,6 +82,10 @@ class DeviceState:
             last_apply_profile=data.get("last_apply_profile"),
             last_apply_status=data.get("last_apply_status"),
             last_apply_unexpected_failures=data.get("last_apply_unexpected_failures", 0),
+            last_restore_status=data.get("last_restore_status"),
+            last_restore_errors=data.get("last_restore_errors", 0),
+            last_undo_apply_id=data.get("last_undo_apply_id"),
+            last_undo_status=data.get("last_undo_status"),
         )
 
 
@@ -118,17 +137,26 @@ def record_profile_applied(
     return state
 
 
-def record_snapshot_restored(path: Path, snapshot_name: str) -> DeviceState:
+def record_snapshot_restored(
+    path: Path, snapshot_name: str, *, status: str, error_count: int = 0
+) -> DeviceState:
     """Section 13 (v0.3.0): after a full baseline restore, the device is
     no longer cleanly "on" whatever profile was last applied — restoring
     can only be assumed to return the device to its pre-ReLite baseline,
     not to any specific profile's exact state (the baseline predates any
     profile). `active_profile` is explicitly cleared, not left stale.
+
+    Section 7 (v0.4.0): `status` must be the caller's own verified verdict
+    ("OK" or "PARTIAL"/"FAILED") derived from `RestoreResult.errors`, never
+    assumed clean just because this function was called — record_
+    snapshot_restored no longer implies success by name alone.
     """
     state = load_state(path)
     state.active_profile = None
     state.applied_at = None
     state.last_snapshot = snapshot_name
+    state.last_restore_status = status
+    state.last_restore_errors = error_count
     save_state(path, state)
     return state
 
@@ -144,6 +172,17 @@ def clear_active_profile(path: Path) -> DeviceState:
     state = load_state(path)
     state.active_profile = None
     state.applied_at = None
+    save_state(path, state)
+    return state
+
+
+def record_undo_result(path: Path, apply_id: str, *, status: str) -> DeviceState:
+    """Section 6 (v0.4.0): record the *verified* outcome of `relite undo`
+    (re-queried post-undo package/tuning state, not just "commands exited
+    zero") so `relite status` can show it rather than only "N reverted"."""
+    state = load_state(path)
+    state.last_undo_apply_id = apply_id
+    state.last_undo_status = status
     save_state(path, state)
     return state
 
@@ -233,12 +272,20 @@ class IntegrityReport:
         return "PASS"
 
 
+_STATE_LABEL = {
+    PackageState.PRESENT_ENABLED: "present",
+    PackageState.PRESENT_DISABLED: "disabled",
+    PackageState.ABSENT_FOR_USER: "absent",
+}
+
+
 def check_profile_integrity(
     installed: list[PackageInfo],
     db: ClassificationDatabase,
     profile: Profile,
     *,
     client: AdbClient | None = None,
+    baseline_states: dict[str, PackageState] | None = None,
 ) -> IntegrityReport:
     """Compare live package state — and, when `client` is given, live
     managed-setting state (section 14) — against what `profile` should
@@ -251,12 +298,26 @@ def check_profile_integrity(
     `client` is optional so callers that only have a package inventory
     (or are testing package logic in isolation) still get a report —
     just one that can't catch a failed `settings put` on its own.
+
+    `baseline_states` (section 2 of the v0.4.0 plan) must be the exact
+    same baseline the profile planner used to build the plan being
+    verified — expected state is computed via
+    `relite.profile_planner.desired_state_for`, the one authoritative
+    keep/disable/uninstall-user -> state translation, instead of a second
+    independently-hardcoded `keep -> present` mapping that silently
+    diverges from the planner (e.g. `keep` on a package baseline-disabled
+    would wrongly report "expected present" here otherwise). When omitted
+    (a caller that never resolved a baseline, e.g. a package-inventory-only
+    unit test), every package's baseline defaults to PRESENT_ENABLED —
+    the same default `plan_profile_transition` uses for an unrecorded
+    baseline.
     """
     present = {pkg.name: pkg for pkg in installed}
     mismatches: list[PackageMismatch] = []
     known_limitations: list[KnownLimitation] = []
     degraded: list[Downgrade] = []
     disabled_count = 0
+    baseline_states = baseline_states or {}
 
     # Only check packages the classification database actually has an
     # opinion about — packages db.classify() would call "unknown" are
@@ -267,19 +328,9 @@ def check_profile_integrity(
         expected_action = db.decide(name, profile)
         pkg = present.get(name)
 
-        if expected_action == "keep":
-            expected = "present"
-        elif expected_action == "disable":
-            expected = "disabled"
-        else:  # uninstall-user
-            expected = "absent"
-
-        if pkg is None:
-            observed = "absent"
-        elif pkg.disabled:
-            observed = "disabled"
-        else:
-            observed = "present"
+        baseline = baseline_states.get(name, PackageState.PRESENT_ENABLED)
+        expected = _STATE_LABEL[desired_state_for(baseline, expected_action)]
+        observed = _STATE_LABEL[state_of(pkg)]
 
         if observed == "disabled":
             disabled_count += 1

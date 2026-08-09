@@ -42,7 +42,7 @@ def test_state_round_trips_through_file(tmp_path: Path):
 def test_record_snapshot_restored_clears_active_profile(tmp_path: Path):
     path = tmp_path / "state.json"
     record_profile_applied(path, "maximum")
-    record_snapshot_restored(path, "stock")
+    record_snapshot_restored(path, "stock", status="OK")
     state = load_state(path)
     assert state.active_profile is None
     assert state.last_snapshot == "stock"
@@ -85,7 +85,7 @@ def test_record_profile_applied_does_not_mark_active_on_fail(tmp_path: Path):
 def test_record_profile_applied_preserves_baseline_and_last_snapshot(tmp_path: Path):
     path = tmp_path / "state.json"
     record_baseline_snapshot(path, "auto-pre-relite")
-    record_snapshot_restored(path, "auto-pre-relite")
+    record_snapshot_restored(path, "auto-pre-relite", status="OK")
 
     record_profile_applied(path, "performance", "PASS")
 
@@ -100,7 +100,7 @@ def test_record_snapshot_restored_preserves_baseline_and_clears_active_profile(t
     record_baseline_snapshot(path, "auto-pre-relite")
     record_profile_applied(path, "maximum", "PASS")
 
-    record_snapshot_restored(path, "auto-pre-relite")
+    record_snapshot_restored(path, "auto-pre-relite", status="OK")
 
     reloaded = load_state(path)
     assert reloaded.active_profile is None

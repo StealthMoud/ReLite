@@ -8,8 +8,10 @@ scope.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from relite.adb import AdbClient
 from relite.profiles import load_profiles
@@ -29,9 +31,22 @@ RAM_EXPANSION_CANDIDATE_KEYS = (
 )
 
 
+ANIMATION_SCALE_KEYS = ("window_animation_scale", "transition_animation_scale", "animator_duration_scale")
+
+
+def read_animation_scale(client: AdbClient) -> dict[str, str]:
+    """The live value of every ReLite-managed animation-scale key, used to
+    capture "what it was before this apply" so `relite undo` can restore
+    tuning as part of the same transaction it reverses packages in
+    (section 4 of the v0.4.0 plan) — not just re-derive some other
+    profile's nominal value, which could be wrong if the setting had
+    drifted (manually changed, OEM override) before this apply ran."""
+    return {key: client.shell(f"settings get global {key}").stdout.strip() for key in ANIMATION_SCALE_KEYS}
+
+
 def set_animation_scale(client: AdbClient, scale: str) -> dict[str, bool]:
     results = {}
-    for key in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"):
+    for key in ANIMATION_SCALE_KEYS:
         result = client.shell(f"settings put global {key} {scale}")
         results[key] = result.ok
     return results
@@ -43,6 +58,34 @@ def apply_animation_profile(client: AdbClient, profile: str) -> dict[str, bool]:
     if meta is None:
         raise ValueError(f"unknown profile {profile!r}")
     return set_animation_scale(client, meta.animation_scale)
+
+
+def record_tuning_change(
+    path: Path, apply_id: str, previous: dict[str, str], target: dict[str, str]
+) -> None:
+    """Append one journal line per `relite apply`'s tuning change (section
+    4 of the v0.4.0 plan) so `relite undo` can restore animation scale as
+    part of the same transaction it reverses packages in, instead of undo
+    only ever touching package state and silently leaving tuning on
+    whatever the last-applied profile set it to."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as journal:
+        journal.write(json.dumps({"apply_id": apply_id, "previous": previous, "target": target}) + "\n")
+
+
+def load_tuning_change(path: Path, apply_id: str) -> dict[str, str] | None:
+    """The pre-apply animation-scale values recorded for `apply_id`, or
+    None if this apply never touched tuning (or predates section 4)."""
+    if not path.exists():
+        return None
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if record.get("apply_id") == apply_id:
+            previous = record.get("previous")
+            return dict(previous) if isinstance(previous, dict) else None
+    return None
 
 
 @dataclass
@@ -100,6 +143,23 @@ _ANIMATION_SCALE_RE = re.compile(r"^\d+(\.\d+)?$")
 _PRIVATE_DNS_MODE_RE = re.compile(r"^(off|opportunistic|hostname)$")
 
 
+@dataclass
+class SettingRestoreResult:
+    """Section 8 of the v0.4.0 plan: `restore_managed_setting` used to
+    return nothing, so a failed `settings put`, a failed `settings delete`,
+    or a rejected (invalid-format) snapshot value was silently swallowed —
+    `relite restore` could report "N settings restored" while some of them
+    silently didn't take. Every call now reports what was requested, what
+    command ran, and what the read-back value actually is afterward."""
+
+    namespace: str
+    key: str
+    requested: str | None  # None means "delete the key", matching original_value
+    command_ok: bool
+    observed: str | None
+    verified: bool
+
+
 def restore_managed_setting(
     client: AdbClient,
     namespace: str,
@@ -107,7 +167,7 @@ def restore_managed_setting(
     original_value: str | None,
     *,
     dry_run: bool = False,
-) -> None:
+) -> SettingRestoreResult:
     """Restore a single ReLite-managed setting to its recorded pre-ReLite
     value, distinguishing "the key existed with this value" from "the key
     did not exist at all" (`settings delete`, not a guessed default).
@@ -119,17 +179,48 @@ def restore_managed_setting(
     """
     validate_setting_key(key)
     if dry_run:
-        return
+        return SettingRestoreResult(
+            namespace=namespace, key=key, requested=original_value, command_ok=True, observed=None,
+            verified=True,
+        )
+
+    if original_value is not None:
+        if key in ANIMATION_SCALE_KEYS and not _ANIMATION_SCALE_RE.match(original_value):
+            return SettingRestoreResult(
+                namespace=namespace, key=key, requested=original_value, command_ok=False, observed=None,
+                verified=False,
+            )
+        if key == "private_dns_mode" and not _PRIVATE_DNS_MODE_RE.match(original_value):
+            return SettingRestoreResult(
+                namespace=namespace, key=key, requested=original_value, command_ok=False, observed=None,
+                verified=False,
+            )
+        if (
+            key == "private_dns_specifier"
+            and original_value
+            and not re.match(r"^[A-Za-z0-9.-]+$", original_value)
+        ):
+            return SettingRestoreResult(
+                namespace=namespace, key=key, requested=original_value, command_ok=False, observed=None,
+                verified=False,
+            )
+
     if original_value is None:
-        client.shell(f"settings delete {namespace} {key}")
-        return
-    if key in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"):
-        if not _ANIMATION_SCALE_RE.match(original_value):
-            return
-    elif key == "private_dns_mode":
-        if not _PRIVATE_DNS_MODE_RE.match(original_value):
-            return
-    elif key == "private_dns_specifier":
-        if original_value and not re.match(r"^[A-Za-z0-9.-]+$", original_value):
-            return
-    client.shell(f"settings put {namespace} {key} {original_value}")
+        command_ok = client.shell(f"settings delete {namespace} {key}").ok
+    else:
+        command_ok = client.shell(f"settings put {namespace} {key} {original_value}").ok
+
+    observed = client.shell(f"settings get global {key}").stdout.strip() if namespace == "global" else None
+    if namespace == "global":
+        observed_norm = None if observed in ("null", "") else observed
+        verified = command_ok and observed_norm == original_value
+    else:
+        # No portable read-back path is used for non-global namespaces today
+        # (nothing currently restores secure/system settings) — command
+        # success is the only signal available.
+        verified = command_ok
+
+    return SettingRestoreResult(
+        namespace=namespace, key=key, requested=original_value, command_ok=command_ok, observed=observed,
+        verified=verified,
+    )

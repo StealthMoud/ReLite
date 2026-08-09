@@ -72,8 +72,16 @@ def restore_from_journal(
     current = {pkg.name: pkg for pkg in list_packages(client)}
 
     for record in reversed(records):
-        if record.result != "ok":
-            continue
+        # Section 5 (v0.4.0): do NOT skip records whose apply attempt
+        # wasn't a clean "ok" — a multi-command transition can partially
+        # modify the device (e.g. `install-existing` succeeded but the
+        # follow-up `disable-user` failed), leaving the package neither at
+        # its pre-transaction state nor its requested one. Live current
+        # state (queried fresh above, not the journal's own diagnostic
+        # text) drives the transition either way; `plan_transition`
+        # naturally no-ops when current already equals `previous_state`,
+        # so including every record here is safe and required for
+        # transactional correctness rather than optional extra coverage.
         target = _parse_record_state(record.previous_state)
         if target is not None:
             transition = plan_transition(record.package, state_of(current.get(record.package)), target)
@@ -200,7 +208,13 @@ def restore_from_snapshot(client: AdbClient, snapshot: Snapshot, *, dry_run: boo
     settings_restored: dict[str, str] = {}
     for namespace, key in MANAGED_SETTINGS:
         original = snapshot.settings.get(namespace, {}).get(key)
-        restore_managed_setting(client, namespace, key, original, dry_run=dry_run)
-        settings_restored[f"{namespace}.{key}"] = original if original is not None else "(absent)"
+        setting_result = restore_managed_setting(client, namespace, key, original, dry_run=dry_run)
+        if setting_result.verified:
+            settings_restored[f"{namespace}.{key}"] = original if original is not None else "(absent)"
+        else:
+            errors.append(
+                f"setting {namespace}.{key}: restore not verified "
+                f"(requested {setting_result.requested!r}, observed {setting_result.observed!r})"
+            )
 
     return RestoreResult(packages_restored=restored, settings_restored=settings_restored, errors=errors)
