@@ -1,0 +1,18 @@
+# ReLite "performance" profile — safe profile + more.
+
+name: performance
+label: recommended
+description: >
+  Everything in the safe profile, plus disabling more optional OEM
+  services, removing duplicate OEM applications, and reducing unnecessary
+  startup components. Disables OEM RAM Expansion only if a device's
+  findings.md has validated that doing so is beneficial and safe.
+
+animation_scale: "0.5"
+
+package_policy:
+  removes: [high-confidence-ads, high-confidence-analytics, optional-oem-services, duplicate-oem-apps]
+  preserves: [oem-conveniences-still-in-active-use]
+
+ram_expansion: disable-if-validated-beneficial
+network_adblock: disabled-by-default

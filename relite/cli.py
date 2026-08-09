@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -30,6 +31,7 @@ from relite.actions import apply_transitions, latest_apply_id, new_apply_id
 from relite.adb import AdbClient, AdbUnavailableError
 from relite.baseline import OwnershipStatus, validate_baseline
 from relite.classifier import ClassificationDatabase, load_database
+from relite.data_paths import devices_root
 from relite.device import DeviceProfile, probe_device
 from relite.device_identity import default_local_root, device_key, device_local_dir, migrate_legacy_layout
 from relite.package_state import PackageState, state_of
@@ -52,7 +54,10 @@ from relite.validate import ValidationError, validate_local_name
 
 console = Console()
 
-DEVICES_ROOT = Path("devices")
+# Section 27-29: resolved once at import time (source checkout / packaged
+# wheel / RELITE_DATA_DIR, in that order — see relite/data_paths.py), and
+# re-resolved in main() if --data-dir overrides it for this invocation.
+DEVICES_ROOT = devices_root()
 
 
 def _profile_label(profile_name: str) -> str:
@@ -200,11 +205,19 @@ def _resolve_baseline(
 @click.option(
     "--serial", default=None, help="Target a specific ADB serial when multiple devices are attached."
 )
+@click.option(
+    "--data-dir", default=None,
+    help="Override where profiles/ and devices/ data is loaded from (same as RELITE_DATA_DIR).",
+)
 @click.pass_context
-def main(ctx: click.Context, serial: str | None) -> None:
+def main(ctx: click.Context, serial: str | None, data_dir: str | None) -> None:
     """ReLite — make Android lighter without replacing the hardware layer."""
     ctx.ensure_object(dict)
     ctx.obj["serial"] = serial
+    if data_dir:
+        os.environ["RELITE_DATA_DIR"] = data_dir
+        global DEVICES_ROOT
+        DEVICES_ROOT = devices_root()
 
 
 def _client(ctx: click.Context) -> AdbClient:

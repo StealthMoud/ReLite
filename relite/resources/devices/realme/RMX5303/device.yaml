@@ -1,0 +1,90 @@
+# Device identity for realme C71 (RMX5303).
+#
+# Values here describe the device *family*. Firmware-version-specific
+# facts (Android release, security patch, build fingerprint) are never
+# hard-coded — always trust `relite device` output over this file for
+# those. Hardware facts below (RAM, RAM Expansion state) were confirmed
+# against a real unit on 2026-08-08; see findings.md for the evidence.
+
+model: RMX5303
+marketing_name: realme C71
+manufacturer: realme
+soc_family: UNISOC T7250 (UMS9230)
+
+# CORRECTED from the original 6 GB assumption in the project brief.
+# `adb shell cat /proc/meminfo` on the real unit reports
+# MemTotal: 7,968,356 kB (~7.6 GiB / ~8.16 decimal GB) — consistent with
+# an 8 GB physical RAM configuration, not 6 GB. RAM Expansion (below) was
+# confirmed OFF at measurement time, so this is not a RAM-expansion
+# artifact inflating the figure. Either this specific unit/region SKU
+# ships 8 GB physical RAM, or the "6 GB" figure in the original brief was
+# inaccurate for this exact model/region combination — real device
+# evidence takes priority. Physical RAM should still be re-confirmed via
+# `relite device` on any other RMX5303 unit rather than assumed from
+# this one.
+physical_ram_gb: 8
+physical_ram_gb_note: >
+  Derived from kernel MemTotal, not a marketing spec sheet. See
+  findings.md 2026-08-08 entry.
+
+ram_expansion:
+  advertised_max_virtual_gb: 16
+  mechanism: >
+    OEM storage-backed swap-like extension, confirmed distinct from
+    kernel zRAM (device separately reports zram_enabled=1 with ~4.7GB of
+    zram-backed swap active regardless of this feature's state).
+  status: confirmed-present-and-off
+  options_offered: [Off, 6GB, 10GB, 16GB]
+  current_selection: "Off"
+  ui_path: >
+    Settings app, reachable via
+    `adb shell am start -a oplus.intent.action.settings.RAM_EXPANSION_SETTINGS`
+    (activity com.android.settings/.Settings$RamExpansionActivity). No
+    programmatic `settings put` key was found in global/secure/system
+    namespaces — see findings.md and docs/manual-actions.md.
+
+firmware:
+  detect_via: relite device
+  note: >
+    Never assume the Android version or security patch level from online
+    marketing listings. Always read ro.build.version.release,
+    ro.build.version.sdk, ro.build.version.security_patch, and
+    ro.build.fingerprint from the live device.
+  observed_2026_08_08:
+    android_version: "15"
+    sdk_int: 35
+    security_patch: "2026-04-01"
+    build_fingerprint: "realme/RMX5303EEA/RE60B8:15/AP3A.240905.015.A2/V.R4T2.1776089958:user/release-keys"
+    display_id: RMX5303GDPR_15_C.55
+    region: EEA (Germany / DE, per persist.sys.oppo.region)
+    kernel: "5.15.178-android13-8-00006-g0c6055fd2d8b-ab13363910"
+
+architecture:
+  cpu_abi: arm64-v8a
+  cpu_abilist: [arm64-v8a, armeabi-v7a, armeabi]
+
+benchmark_targets:
+  - label: settings
+    package: com.android.settings
+    activity: .Settings
+  - label: camera
+    package: com.oplus.camera
+    activity: .Camera
+
+pss_targets:
+  # launcher/relite_home include an activity: measured with a full
+  # force-stop + cold-start + 45s settle cycle for a fair comparison
+  # (see benchmarks/methodology.md's PSS settle-time note). systemui is
+  # measured ambient (no activity) since it should never be force-stopped.
+  - label: launcher
+    package: com.android.launcher3
+    activity: com.android.launcher3.uioverrides.QuickstepLauncher
+  - label: systemui
+    package: com.android.systemui
+  - label: relite_home
+    package: io.relite.home
+    activity: .ui.MainActivity
+
+support_status: validated-against-real-device
+bootloader_investigated: false
+gsi_investigated: false

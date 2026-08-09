@@ -47,6 +47,34 @@ jobs:
             fi
           done
 
+      - name: Check packaged relite/resources/ is in sync with profiles/ and devices/
+        run: |
+          python scripts/sync_resources.py
+          git diff --exit-code -- relite/resources \
+            || { echo "::error::relite/resources is stale — run scripts/sync_resources.py and commit the result"; exit 1; }
+
+      - name: Build wheel and sdist
+        run: |
+          pip install build
+          python -m build
+
+      - name: Install wheel in a fresh venv outside the checkout and verify it's self-contained
+        run: |
+          python -m venv /tmp/relite-wheel-ci
+          /tmp/relite-wheel-ci/bin/pip install dist/relite-*-py3-none-any.whl
+          cd /tmp
+          /tmp/relite-wheel-ci/bin/relite --version
+          /tmp/relite-wheel-ci/bin/python -c "
+          from relite.profiles import load_profiles
+          from relite.classifier import load_database
+          from relite.data_paths import devices_root
+          profiles = load_profiles()
+          assert len(profiles) == 3, profiles
+          db = load_database(devices_root() / 'realme' / 'RMX5303')
+          assert db.entries, 'no packaged RMX5303 package data found outside the checkout'
+          print('wheel is self-contained:', sorted(profiles), len(db.entries), 'packages')
+          "
+
       - name: Secret / identifier scan of committed fixtures
         run: |
           python - <<'PY'

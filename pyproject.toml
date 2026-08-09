@@ -45,6 +45,7 @@ include = ["relite*"]
 
 [tool.setuptools.package-data]
 relite = ["py.typed"]
+"relite.resources" = ["**/*.yaml", "**/*.yml", "**/*.md"]
 
 [tool.ruff]
 line-length = 110

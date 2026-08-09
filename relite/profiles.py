@@ -19,11 +19,11 @@ from typing import Any
 
 import yaml
 
+from relite.data_paths import profiles_root
+
 VALID_PROFILE_NAMES = {"safe", "performance", "maximum"}
 
 _ANIMATION_SCALE_RE = re.compile(r"^\d+(\.\d+)?$")
-
-_DEFAULT_ROOT = Path("profiles")
 
 
 @dataclass(frozen=True)
@@ -73,4 +73,4 @@ def load_profiles(root: Path | None = None) -> dict[str, ProfileMeta]:
     """Load and validate `profiles/{safe,performance,maximum}.yaml` (or a
     custom root directory, mainly for tests). Cached per root since this
     is read on every CLI invocation that touches profile metadata."""
-    return _load_cached(str(root or _DEFAULT_ROOT))
+    return _load_cached(str(root or profiles_root()))
