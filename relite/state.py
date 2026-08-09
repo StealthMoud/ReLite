@@ -19,18 +19,34 @@ from typing import Any
 from relite.classifier import ClassificationDatabase, Profile
 from relite.packages import PackageInfo
 
+#: Integrity states under which the intended profile is still trustworthy
+#: enough to record as "active" (section 6/33 of the v0.2.0 plan). FAIL
+#: means at least one *unexpected, undocumented* package didn't end up in
+#: its intended state, so apply must not claim a clean profile.
+_CLEAN_ENOUGH_TO_RECORD = {"PASS", "PASS_WITH_LIMITATIONS", "DEGRADED"}
+
 
 @dataclass
 class DeviceState:
     active_profile: str | None = None
     applied_at: str | None = None
     last_snapshot: str | None = None
+    # Section 6: the outcome of the *last* apply attempt, independent of
+    # whether it was clean enough to become `active_profile`. Lets
+    # `relite status` show "you tried to apply performance and it partially
+    # failed" instead of silently reverting to "no profile recorded".
+    last_apply_profile: str | None = None
+    last_apply_status: str | None = None
+    last_apply_unexpected_failures: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "active_profile": self.active_profile,
             "applied_at": self.applied_at,
             "last_snapshot": self.last_snapshot,
+            "last_apply_profile": self.last_apply_profile,
+            "last_apply_status": self.last_apply_status,
+            "last_apply_unexpected_failures": self.last_apply_unexpected_failures,
         }
 
     @classmethod
@@ -39,6 +55,9 @@ class DeviceState:
             active_profile=data.get("active_profile"),
             applied_at=data.get("applied_at"),
             last_snapshot=data.get("last_snapshot"),
+            last_apply_profile=data.get("last_apply_profile"),
+            last_apply_status=data.get("last_apply_status"),
+            last_apply_unexpected_failures=data.get("last_apply_unexpected_failures", 0),
         )
 
 
@@ -56,8 +75,30 @@ def save_state(path: Path, state: DeviceState) -> None:
     path.write_text(json.dumps(state.to_dict(), indent=2, sort_keys=True) + "\n")
 
 
-def record_profile_applied(path: Path, profile: str) -> DeviceState:
-    state = DeviceState(active_profile=profile, applied_at=datetime.now(UTC).isoformat())
+def record_profile_applied(
+    path: Path,
+    profile: str,
+    integrity_status: str = "PASS",
+    *,
+    unexpected_failures: int = 0,
+) -> DeviceState:
+    """Record the outcome of applying `profile`.
+
+    `active_profile` is only set when `integrity_status` is clean enough to
+    trust (section 6): an apply with unexpected, undocumented failures
+    (FAIL) must not leave the device looking like it's cleanly on a
+    profile it only partially reached. The attempt itself is always
+    recorded via `last_apply_*` so `relite status` can report what
+    actually happened instead of just reverting to "no profile".
+    """
+    is_clean_enough = integrity_status in _CLEAN_ENOUGH_TO_RECORD
+    state = DeviceState(
+        active_profile=profile if is_clean_enough else None,
+        applied_at=datetime.now(UTC).isoformat(),
+        last_apply_profile=profile,
+        last_apply_status=integrity_status,
+        last_apply_unexpected_failures=unexpected_failures,
+    )
     save_state(path, state)
     return state
 
@@ -84,16 +125,48 @@ class KnownLimitation:
 
 
 @dataclass
+class Downgrade:
+    """A package that satisfies its profile's intent but not literally —
+    e.g. the profile asked for `uninstall-user` (absent) and the package
+    ended up merely `disable`d instead (still functionally acceptable,
+    since disable is a strictly weaker but still-applied action, but not
+    the literal requested state)."""
+
+    package: str
+    expected: str
+    observed: str
+
+
+@dataclass
 class IntegrityReport:
     profile: str
     total_checked: int
     disabled_count: int
     mismatches: list[PackageMismatch] = field(default_factory=list)
     known_limitations: list[KnownLimitation] = field(default_factory=list)
+    degraded: list[Downgrade] = field(default_factory=list)
 
     @property
     def status(self) -> str:
-        return "PASS" if not self.mismatches else "FAIL"
+        """Section 33 of the v0.2.0 plan: distinguish four states rather
+        than a flat PASS/FAIL.
+
+        - FAIL: at least one unexpected, undocumented mismatch.
+        - PASS_WITH_LIMITATIONS: every mismatch is a documented, unfixable
+          OEM platform limitation.
+        - DEGRADED: every package satisfies its profile's intent, but at
+          least one only via a weaker action than literally requested
+          (uninstall-user requested, disable observed) — functionally
+          fine, reported honestly rather than folded into a silent PASS.
+        - PASS: live state matches every profile decision exactly.
+        """
+        if self.mismatches:
+            return "FAIL"
+        if self.known_limitations:
+            return "PASS_WITH_LIMITATIONS"
+        if self.degraded:
+            return "DEGRADED"
+        return "PASS"
 
 
 def check_profile_integrity(
@@ -110,6 +183,7 @@ def check_profile_integrity(
     present = {pkg.name: pkg for pkg in installed}
     mismatches: list[PackageMismatch] = []
     known_limitations: list[KnownLimitation] = []
+    degraded: list[Downgrade] = []
     disabled_count = 0
 
     # Only check packages the classification database actually has an
@@ -142,9 +216,14 @@ def check_profile_integrity(
         # is a stronger action than disable, and a package can end up
         # merely disabled instead of uninstalled (e.g. platform refused
         # the uninstall, or a less aggressive profile was applied
-        # previously and not every package was re-touched) without that
-        # being a real compliance problem for reporting purposes.
-        satisfied = observed == expected or (expected == "absent" and observed == "disabled")
+        # previously and not every package was re-touched). That's not a
+        # compliance failure, but it's also not literally what was
+        # requested — recorded as a "degraded" satisfaction, not folded
+        # silently into a flat PASS (section 33).
+        is_downgrade = expected == "absent" and observed == "disabled"
+        satisfied = observed == expected or is_downgrade
+        if is_downgrade:
+            degraded.append(Downgrade(package=name, expected=expected, observed=observed))
         if not satisfied:
             limitation = db.entries[name].platform_limitation
             if limitation:
@@ -160,4 +239,5 @@ def check_profile_integrity(
         disabled_count=disabled_count,
         mismatches=mismatches,
         known_limitations=known_limitations,
+        degraded=degraded,
     )

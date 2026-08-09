@@ -47,6 +47,40 @@ def test_record_snapshot_restored_clears_active_profile(tmp_path: Path):
     assert state.last_snapshot == "stock"
 
 
+def test_record_profile_applied_marks_active_when_clean(tmp_path: Path):
+    path = tmp_path / "state.json"
+    state = record_profile_applied(path, "performance", "PASS")
+    assert state.active_profile == "performance"
+    assert state.last_apply_status == "PASS"
+
+
+def test_record_profile_applied_marks_active_for_pass_with_limitations(tmp_path: Path):
+    path = tmp_path / "state.json"
+    state = record_profile_applied(path, "performance", "PASS_WITH_LIMITATIONS")
+    assert state.active_profile == "performance"
+
+
+def test_record_profile_applied_marks_active_for_degraded(tmp_path: Path):
+    path = tmp_path / "state.json"
+    state = record_profile_applied(path, "maximum", "DEGRADED")
+    assert state.active_profile == "maximum"
+
+
+def test_record_profile_applied_does_not_mark_active_on_fail(tmp_path: Path):
+    """Section 6: unexpected failures must not leave the device looking
+    like it cleanly reached the intended profile."""
+    path = tmp_path / "state.json"
+    state = record_profile_applied(path, "performance", "FAIL", unexpected_failures=3)
+    assert state.active_profile is None
+    assert state.last_apply_profile == "performance"
+    assert state.last_apply_status == "FAIL"
+    assert state.last_apply_unexpected_failures == 3
+
+    reloaded = load_state(path)
+    assert reloaded.active_profile is None
+    assert reloaded.last_apply_profile == "performance"
+
+
 def test_load_state_missing_file_returns_default(tmp_path: Path):
     state = load_state(tmp_path / "does-not-exist.json")
     assert state.active_profile is None
@@ -94,15 +128,19 @@ def test_integrity_treats_disabled_as_satisfying_absent_expectation():
     """A package the profile wants uninstalled, but which only ended up
     disabled (e.g. the platform refused the uninstall, or a less
     aggressive profile ran previously), should not be reported as a
-    compliance failure — disable is a strictly weaker but still-applied
-    action, not a missed one."""
+    compliance *failure* — disable is a strictly weaker but still-applied
+    action, not a missed one. But it's also not literally what was
+    requested, so it's surfaced as DEGRADED rather than folded silently
+    into a flat PASS (section 33 of the v0.2.0 plan)."""
     db = _db()
     installed = [
         PackageInfo(name="com.example.ads", disabled=True),
         PackageInfo(name="com.example.optional", disabled=True),  # maximum expects "disable" too
     ]
     report = check_profile_integrity(installed, db, "maximum")
-    assert report.status == "PASS"
+    assert report.status == "DEGRADED"
+    assert report.mismatches == []
+    assert [d.package for d in report.degraded] == ["com.example.ads"]
 
 
 def test_integrity_ignores_protected_packages():
@@ -146,7 +184,7 @@ def test_integrity_treats_documented_platform_limitation_as_non_failure():
     )
     installed = [PackageInfo(name="com.example.stuck", disabled=False)]
     report = check_profile_integrity(installed, db, "safe")
-    assert report.status == "PASS"
+    assert report.status == "PASS_WITH_LIMITATIONS"
     assert report.mismatches == []
     assert len(report.known_limitations) == 1
     assert report.known_limitations[0].package == "com.example.stuck"
