@@ -5,21 +5,46 @@ never a single cherry-picked number.
 
 from __future__ import annotations
 
+import random
 import re
 import statistics
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from relite.adb import AdbClient
 from relite.packages import list_packages
+from relite.validate import validate_component_name, validate_package_name
 
 DEFAULT_RUNS = 5
+MIN_RUNS = 1
+RECOMMENDED_MIN_RUNS = 3
+
+
+class MeasurementFailedError(RuntimeError):
+    """Raised when every attempt to sample a metric failed to produce a
+    real value — never silently substituted with a fabricated 0 (section
+    35 of the v0.3.0 plan). A genuine `TotalTime: 0` from `am start -W`
+    is a valid sample and is recorded as 0.0; this is only raised when
+    *no* run produced a parseable value at all.
+    """
+
+
+def validate_runs(runs: int) -> int:
+    """Section 36: reject nonsensical run counts outright."""
+    if runs < MIN_RUNS:
+        raise ValueError(f"runs must be >= {MIN_RUNS}, got {runs}")
+    return runs
 
 
 @dataclass
 class TimingStats:
     samples_ms: list[float]
+
+    def __post_init__(self) -> None:
+        if not self.samples_ms:
+            raise MeasurementFailedError("no valid timing samples")
 
     @property
     def median(self) -> float:
@@ -52,6 +77,48 @@ class TimingStats:
 
 
 @dataclass
+class PssStats:
+    """Section 38: PSS as a statistical measurement — a single reading is
+    never advertised as representative of a launcher/app's real memory
+    footprint; publish a median of several settled samples instead."""
+
+    samples_kb: list[int]
+
+    def __post_init__(self) -> None:
+        if not self.samples_kb:
+            raise MeasurementFailedError("no valid PSS samples")
+
+    @property
+    def median(self) -> float:
+        return statistics.median(self.samples_kb)
+
+    @property
+    def minimum(self) -> int:
+        return min(self.samples_kb)
+
+    @property
+    def maximum(self) -> int:
+        return max(self.samples_kb)
+
+    @property
+    def p95(self) -> float:
+        if len(self.samples_kb) < 2:
+            return float(self.samples_kb[0])
+        ordered = sorted(self.samples_kb)
+        idx = min(len(ordered) - 1, int(round(0.95 * (len(ordered) - 1))))
+        return float(ordered[idx])
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "samples_kb": self.samples_kb,
+            "median_kb": self.median,
+            "min_kb": self.minimum,
+            "max_kb": self.maximum,
+            "p95_kb": self.p95,
+        }
+
+
+@dataclass
 class BenchmarkResult:
     label: str
     enabled_packages: int
@@ -62,6 +129,10 @@ class BenchmarkResult:
     app_warm_start_times: dict[str, TimingStats] = field(default_factory=dict)
     pss_kb: dict[str, int] = field(default_factory=dict)
     boot_time: TimingStats | None = None
+    # Section 35: targets that produced no valid sample at all are
+    # recorded here, by target label, rather than silently omitted or
+    # faked as a 0ms/0kB result.
+    measurement_failures: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +145,7 @@ class BenchmarkResult:
             "app_warm_start_times": {k: v.to_dict() for k, v in self.app_warm_start_times.items()},
             "pss_kb": self.pss_kb,
             "boot_time": self.boot_time.to_dict() if self.boot_time else None,
+            "measurement_failures": self.measurement_failures,
         }
 
 
@@ -95,8 +167,9 @@ def measure_pss(client: AdbClient, package: str) -> int | None:
     Measures whatever state the process is already in — appropriate for
     always-on components (e.g. SystemUI) that shouldn't be restarted.
     For a fair cold-start comparison between two apps (e.g. a launcher),
-    use `measure_pss_settled` instead.
+    use `measure_pss_settled`/`measure_pss_settled_stats` instead.
     """
+    validate_package_name(package)
     output = client.shell(f"dumpsys meminfo {package}").stdout
     match = _TOTAL_PSS_RE.search(output)
     return int(match.group(1)) if match else None
@@ -121,6 +194,8 @@ def measure_pss_settled(
     """Force-stop, cold-start, wait for the process to settle, then measure
     PSS — the fair, comparable methodology for benchmarking one app against
     another (e.g. ReLite Home vs. the stock launcher)."""
+    validate_package_name(package)
+    validate_component_name(f"{package}/{activity}")
     client.shell(f"am force-stop {package}")
     time.sleep(1)
     client.shell(f"am start -W {package}/{activity}")
@@ -128,11 +203,32 @@ def measure_pss_settled(
     return measure_pss(client, package)
 
 
+def measure_pss_settled_stats(
+    client: AdbClient,
+    package: str,
+    activity: str,
+    runs: int = RECOMMENDED_MIN_RUNS,
+    settle_seconds: float = DEFAULT_SETTLE_SECONDS,
+) -> PssStats:
+    """Section 38: `runs` independent settled-PSS samples, published as a
+    median rather than one arbitrary reading."""
+    validate_runs(runs)
+    samples = []
+    for _ in range(runs):
+        pss = measure_pss_settled(client, package, activity, settle_seconds)
+        if pss is not None:
+            samples.append(pss)
+    return PssStats(samples_kb=samples)
+
+
 def measure_app_start(
     client: AdbClient, package: str, activity: str, runs: int = DEFAULT_RUNS
 ) -> TimingStats:
     """Cold-start `package/activity` `runs` times via `am start -W`, force-stopping
     between each run so every sample is a genuine cold start."""
+    validate_runs(runs)
+    validate_package_name(package)
+    validate_component_name(f"{package}/{activity}")
     samples: list[float] = []
     for _ in range(runs):
         client.shell(f"am force-stop {package}")
@@ -141,13 +237,16 @@ def measure_app_start(
         match = _TOTAL_START_RE.search(result.stdout)
         if match:
             samples.append(float(match.group(1)))
-    return TimingStats(samples_ms=samples or [0.0])
+    return TimingStats(samples_ms=samples)
 
 
 def measure_warm_start(
     client: AdbClient, package: str, activity: str, runs: int = DEFAULT_RUNS
 ) -> TimingStats:
     """Warm-start timing: send the app to background (not force-stopped) between runs."""
+    validate_runs(runs)
+    validate_package_name(package)
+    validate_component_name(f"{package}/{activity}")
     samples: list[float] = []
     for _ in range(runs):
         client.shell("input keyevent KEYCODE_HOME")
@@ -156,7 +255,7 @@ def measure_warm_start(
         match = _TOTAL_START_RE.search(result.stdout)
         if match:
             samples.append(float(match.group(1)))
-    return TimingStats(samples_ms=samples or [0.0])
+    return TimingStats(samples_ms=samples)
 
 
 def measure_boot_time(client: AdbClient, poll_interval: float = 1.0, timeout: float = 180.0) -> float:
@@ -184,7 +283,18 @@ def run_benchmark(
 ) -> BenchmarkResult:
     """Full benchmark sweep: package counts, memory, and — if targets are
     supplied (see devices/<model>/device.yaml `benchmark_targets` /
-    `pss_targets`) — app cold/warm start timing and per-package PSS."""
+    `pss_targets`) — app cold/warm start timing and per-package PSS.
+
+    Section 37: target package/activity values come from a device's
+    committed YAML, which is human-edited and not immune to becoming
+    malformed — validated the same way any other shell-bound input is,
+    not assumed safe just because it's checked into the repo.
+
+    Section 35: a target whose measurement fails entirely (no valid
+    sample across every run) is recorded in `measurement_failures`
+    rather than silently coming out as a fabricated 0ms/absent result.
+    """
+    validate_runs(runs)
     packages = list_packages(client)
     result = BenchmarkResult(
         label=label,
@@ -195,19 +305,114 @@ def run_benchmark(
     )
 
     for target in app_targets or []:
-        result.app_start_times[target["label"]] = measure_app_start(
-            client, target["package"], target["activity"], runs=runs
-        )
-        result.app_warm_start_times[target["label"]] = measure_warm_start(
-            client, target["package"], target["activity"], runs=runs
-        )
+        target_label = target["label"]
+        try:
+            result.app_start_times[target_label] = measure_app_start(
+                client, target["package"], target["activity"], runs=runs
+            )
+        except MeasurementFailedError:
+            result.measurement_failures.append(f"{target_label} (cold start)")
+        try:
+            result.app_warm_start_times[target_label] = measure_warm_start(
+                client, target["package"], target["activity"], runs=runs
+            )
+        except MeasurementFailedError:
+            result.measurement_failures.append(f"{target_label} (warm start)")
 
     for target in pss_targets or []:
+        target_label = target["label"]
         if "activity" in target:
             pss = measure_pss_settled(client, target["package"], target["activity"])
         else:
             pss = measure_pss(client, target["package"])
         if pss is not None:
-            result.pss_kb[target["label"]] = pss
+            result.pss_kb[target_label] = pss
+        else:
+            result.measurement_failures.append(f"{target_label} (pss)")
 
     return result
+
+
+@dataclass
+class ABSample:
+    order_index: int
+    label: str
+    settled_pss_kb: int
+    timestamp: str
+
+
+@dataclass
+class ABBenchmarkResult:
+    """Section 39: a controlled A/B comparison run within a single
+    session, alternating sample order between two targets to reduce
+    time-of-session drift, background-state drift, and thermal-order
+    bias — rather than two separately-timed sessions compared after the
+    fact (the methodology gap `benchmarks/results/*/v0.2.0.md` and
+    `v0.3.0.md` explicitly flag as unaddressed until this)."""
+
+    label_a: str
+    label_b: str
+    samples: list[ABSample]
+
+    def stats_for(self, label: str) -> PssStats:
+        return PssStats(samples_kb=[s.settled_pss_kb for s in self.samples if s.label == label])
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label_a": self.label_a,
+            "label_b": self.label_b,
+            "samples": [
+                {
+                    "order_index": s.order_index,
+                    "label": s.label,
+                    "settled_pss_kb": s.settled_pss_kb,
+                    "timestamp": s.timestamp,
+                }
+                for s in self.samples
+            ],
+            "stats": {
+                self.label_a: self.stats_for(self.label_a).to_dict(),
+                self.label_b: self.stats_for(self.label_b).to_dict(),
+            },
+        }
+
+
+def run_launcher_ab_benchmark(
+    client: AdbClient,
+    target_a: dict[str, str],
+    target_b: dict[str, str],
+    runs_each: int = RECOMMENDED_MIN_RUNS,
+    settle_seconds: float = DEFAULT_SETTLE_SECONDS,
+    *,
+    shuffle: bool = True,
+) -> ABBenchmarkResult:
+    """Section 39: alternate settled-PSS samples between two launcher
+    targets within one session. `shuffle=True` (default) randomizes each
+    pair's order rather than a fixed A,B,A,B,... pattern, so a
+    monotonic drift over the session doesn't systematically favor
+    whichever target always goes first/second.
+    """
+    validate_runs(runs_each)
+    validate_package_name(target_a["package"])
+    validate_package_name(target_b["package"])
+    validate_component_name(f"{target_a['package']}/{target_a['activity']}")
+    validate_component_name(f"{target_b['package']}/{target_b['activity']}")
+
+    samples: list[ABSample] = []
+    for _ in range(runs_each):
+        pair = [target_a, target_b]
+        if shuffle:
+            random.shuffle(pair)
+        for target in pair:
+            pss = measure_pss_settled(client, target["package"], target["activity"], settle_seconds)
+            if pss is not None:
+                samples.append(
+                    ABSample(
+                        order_index=len(samples),
+                        label=target["label"],
+                        settled_pss_kb=pss,
+                        timestamp=datetime.now(UTC).isoformat(),
+                    )
+                )
+
+    return ABBenchmarkResult(label_a=target_a["label"], label_b=target_b["label"], samples=samples)

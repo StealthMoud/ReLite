@@ -743,7 +743,16 @@ def benchmark(ctx: click.Context, label: str, runs: int, skip_apps: bool) -> Non
 
     import yaml
 
-    from relite.benchmark import run_benchmark
+    from relite.benchmark import RECOMMENDED_MIN_RUNS, run_benchmark
+
+    if runs < 1:
+        console.print(f"[red]--runs must be >= 1, got {runs}.[/red]")
+        sys.exit(1)
+    if runs < RECOMMENDED_MIN_RUNS:
+        console.print(
+            f"[yellow]--runs {runs} is below the recommended minimum of "
+            f"{RECOMMENDED_MIN_RUNS} for published measurements.[/yellow]"
+        )
 
     client, serial = _connected_client(ctx)
     device_profile = probe_device(client, serial)
@@ -767,6 +776,13 @@ def benchmark(ctx: click.Context, label: str, runs: int, skip_apps: bool) -> Non
     out_path = out_dir / f"{label}.json"
     out_path.write_text(_json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n")
     console.print(f"[green]Benchmark '{label}' saved to {out_path}[/green]")
+    if result.measurement_failures:
+        console.print(
+            f"[yellow]{len(result.measurement_failures)} measurement(s) produced no valid sample "
+            f"(not recorded as 0 — see 'measurement_failures' in the saved result):[/yellow]"
+        )
+        for failure in result.measurement_failures:
+            console.print(f"  - {failure}")
 
 
 @main.command()
