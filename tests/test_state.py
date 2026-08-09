@@ -200,6 +200,53 @@ def test_integrity_absent_package_satisfies_uninstall_expectation():
     assert [m.package for m in report.mismatches] == ["com.example.optional"]
 
 
+def test_integrity_verifies_tuning_when_client_given(fake_client, fake_runner):
+    db = _db()
+    installed = [PackageInfo(name="com.example.ads", disabled=True), PackageInfo(name="com.example.optional")]
+    fake_runner.set_response(
+        ["adb", "-s", "EMULATOR123", "shell", "settings get global window_animation_scale"], stdout="0.5"
+    )
+    fake_runner.set_response(
+        ["adb", "-s", "EMULATOR123", "shell", "settings get global transition_animation_scale"], stdout="0.5"
+    )
+    fake_runner.set_response(
+        ["adb", "-s", "EMULATOR123", "shell", "settings get global animator_duration_scale"], stdout="0.5"
+    )
+
+    report = check_profile_integrity(installed, db, "safe", client=fake_client)
+
+    assert report.status == "PASS"
+    assert report.tuning_mismatches == []
+
+
+def test_integrity_fails_on_tuning_mismatch(fake_client, fake_runner):
+    """A failed animation-scale write must not be folded into a false PASS."""
+    db = _db()
+    installed = [PackageInfo(name="com.example.ads", disabled=True), PackageInfo(name="com.example.optional")]
+    fake_runner.set_response(
+        ["adb", "-s", "EMULATOR123", "shell", "settings get global window_animation_scale"], stdout="1.0"
+    )
+    fake_runner.set_response(
+        ["adb", "-s", "EMULATOR123", "shell", "settings get global transition_animation_scale"], stdout="0.5"
+    )
+    fake_runner.set_response(
+        ["adb", "-s", "EMULATOR123", "shell", "settings get global animator_duration_scale"], stdout="0.5"
+    )
+
+    report = check_profile_integrity(installed, db, "safe", client=fake_client)
+
+    assert report.status == "FAIL"
+    assert len(report.tuning_mismatches) == 1
+    assert report.tuning_mismatches[0].key == "window_animation_scale"
+
+
+def test_integrity_without_client_does_not_check_tuning():
+    db = _db()
+    installed = [PackageInfo(name="com.example.ads", disabled=True), PackageInfo(name="com.example.optional")]
+    report = check_profile_integrity(installed, db, "safe")
+    assert report.tuning_mismatches == []
+
+
 def test_integrity_treats_documented_platform_limitation_as_non_failure():
     """Real-device finding (RMX5303, 2026-08-08): com.coloros.lockassistant
     can never actually be disabled on this OEM build (the platform

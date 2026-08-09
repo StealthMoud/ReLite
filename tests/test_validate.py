@@ -6,6 +6,7 @@ from relite.validate import (
     ValidationError,
     validate_component_name,
     validate_dns_hostname,
+    validate_local_name,
     validate_package_name,
     validate_setting_key,
 )
@@ -104,3 +105,29 @@ def test_validate_setting_key_accepts_real_keys(key):
 def test_validate_setting_key_rejects_malicious_or_malformed(key):
     with pytest.raises(ValidationError):
         validate_setting_key(key)
+
+
+@pytest.mark.parametrize("name", ["stock", "auto-pre-relite", "before_v0.3", "2026-08-10-safe"])
+def test_validate_local_name_accepts_reasonable_names(name):
+    assert validate_local_name(name) == name
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "",
+        ".",
+        "..",
+        "../../etc/passwd",
+        "../escape",
+        "a/b",
+        "a\\b",
+        ".leading-dot",
+        "name with spaces",
+        "name; rm -rf /",
+        "a" * 200,
+    ],
+)
+def test_validate_local_name_rejects_traversal_and_malformed(name):
+    with pytest.raises(ValidationError):
+        validate_local_name(name)

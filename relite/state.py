@@ -16,8 +16,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from relite.adb import AdbClient
 from relite.classifier import ClassificationDatabase, Profile
 from relite.packages import PackageInfo
+from relite.profiles import load_profiles
 
 #: Integrity states under which the intended profile is still trustworthy
 #: enough to record as "active" (section 6/33 of the v0.2.0 plan). FAIL
@@ -131,6 +133,21 @@ def record_snapshot_restored(path: Path, snapshot_name: str) -> DeviceState:
     return state
 
 
+def clear_active_profile(path: Path) -> DeviceState:
+    """Section 13 (v0.3.0): after `relite undo` reverts one transaction
+    (as opposed to a full baseline restore), the device is no longer
+    cleanly "on" whatever profile was last applied. Clears only
+    `active_profile`/`applied_at`, leaving `last_snapshot`,
+    `baseline_snapshot`, and `last_apply_*` untouched — unlike
+    `record_snapshot_restored()`, this isn't "a snapshot was restored".
+    """
+    state = load_state(path)
+    state.active_profile = None
+    state.applied_at = None
+    save_state(path, state)
+    return state
+
+
 def record_baseline_snapshot(path: Path, snapshot_name: str) -> DeviceState:
     """Section 6: explicitly record which snapshot is the baseline —
     never inferred from a snapshot happening to be named "stock"."""
@@ -169,6 +186,13 @@ class Downgrade:
 
 
 @dataclass
+class TuningMismatch:
+    key: str
+    expected: str
+    observed: str
+
+
+@dataclass
 class IntegrityReport:
     profile: str
     total_checked: int
@@ -176,22 +200,31 @@ class IntegrityReport:
     mismatches: list[PackageMismatch] = field(default_factory=list)
     known_limitations: list[KnownLimitation] = field(default_factory=list)
     degraded: list[Downgrade] = field(default_factory=list)
+    # Section 14 (v0.3.0): package state alone is not full profile
+    # integrity — a profile includes animation scale too. Populated only
+    # when check_profile_integrity() is called with a `client` (a live
+    # device to read settings back from); empty otherwise, same as an
+    # older caller that never checked tuning at all.
+    tuning_mismatches: list[TuningMismatch] = field(default_factory=list)
 
     @property
     def status(self) -> str:
-        """Section 33 of the v0.2.0 plan: distinguish four states rather
-        than a flat PASS/FAIL.
+        """Section 33 of the v0.2.0 plan (extended by section 14 of
+        v0.3.0 to include tuning): distinguish four states rather than a
+        flat PASS/FAIL.
 
-        - FAIL: at least one unexpected, undocumented mismatch.
-        - PASS_WITH_LIMITATIONS: every mismatch is a documented, unfixable
-          OEM platform limitation.
+        - FAIL: at least one unexpected, undocumented package mismatch,
+          or a managed setting that didn't take (a failed animation-scale
+          write is never folded into a false PASS).
+        - PASS_WITH_LIMITATIONS: every package mismatch is a documented,
+          unfixable OEM platform limitation, and tuning is clean.
         - DEGRADED: every package satisfies its profile's intent, but at
           least one only via a weaker action than literally requested
           (uninstall-user requested, disable observed) — functionally
           fine, reported honestly rather than folded into a silent PASS.
         - PASS: live state matches every profile decision exactly.
         """
-        if self.mismatches:
+        if self.mismatches or self.tuning_mismatches:
             return "FAIL"
         if self.known_limitations:
             return "PASS_WITH_LIMITATIONS"
@@ -204,12 +237,20 @@ def check_profile_integrity(
     installed: list[PackageInfo],
     db: ClassificationDatabase,
     profile: Profile,
+    *,
+    client: AdbClient | None = None,
 ) -> IntegrityReport:
-    """Compare live package state against what `profile` should produce.
+    """Compare live package state — and, when `client` is given, live
+    managed-setting state (section 14) — against what `profile` should
+    produce.
 
     `installed` must come from `list_packages()` scoped to `--user 0`
     (see relite/packages.py) so packages uninstalled-for-user-0 are
     correctly absent from it, not merely marked disabled.
+
+    `client` is optional so callers that only have a package inventory
+    (or are testing package logic in isolation) still get a report —
+    just one that can't catch a failed `settings put` on its own.
     """
     present = {pkg.name: pkg for pkg in installed}
     mismatches: list[PackageMismatch] = []
@@ -264,6 +305,16 @@ def check_profile_integrity(
             else:
                 mismatches.append(PackageMismatch(package=name, expected=expected, observed=observed))
 
+    tuning_mismatches: list[TuningMismatch] = []
+    if client is not None:
+        expected_scale = load_profiles()[profile].animation_scale
+        for key in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"):
+            observed_value = client.shell(f"settings get global {key}").stdout.strip()
+            if observed_value != expected_scale:
+                tuning_mismatches.append(
+                    TuningMismatch(key=key, expected=expected_scale, observed=observed_value)
+                )
+
     return IntegrityReport(
         profile=profile,
         total_checked=len(db.entries),
@@ -271,4 +322,5 @@ def check_profile_integrity(
         mismatches=mismatches,
         known_limitations=known_limitations,
         degraded=degraded,
+        tuning_mismatches=tuning_mismatches,
     )

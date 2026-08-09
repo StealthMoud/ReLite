@@ -36,6 +36,12 @@ _HOSTNAME_LABEL_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
 
 _SETTING_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# User-controlled local artifact names (snapshot names, benchmark labels):
+# conservative, no path separators, no leading dot (rules out "." and
+# "..", both of which are filesystem-meaningful rather than a name).
+_LOCAL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_LOCAL_NAME_MAX_LENGTH = 100
+
 
 def validate_package_name(name: str) -> str:
     if not name or len(name) > 255 or not _PACKAGE_RE.match(name):
@@ -66,3 +72,17 @@ def validate_setting_key(key: str) -> str:
     if not key or not _SETTING_KEY_RE.match(key):
         raise ValidationError(f"not a valid settings key: {key!r}")
     return key
+
+
+def validate_local_name(name: str) -> str:
+    """Validate a user-controlled local artifact name — a snapshot name
+    (`relite snapshot --name ...`), a benchmark label, or similar — used
+    to build a filesystem path under `.local/`. Rejects `.`, `..`, path
+    separators, and control characters by construction, so a name like
+    `../../something` can never escape the intended ReLite directory.
+    """
+    if not name or len(name) > _LOCAL_NAME_MAX_LENGTH or not _LOCAL_NAME_RE.match(name):
+        raise ValidationError(f"not a valid local artifact name: {name!r}")
+    if name in (".", ".."):
+        raise ValidationError(f"not a valid local artifact name: {name!r}")
+    return name

@@ -26,18 +26,29 @@ from rich.console import Console
 from rich.table import Table
 
 from relite import __version__
-from relite.actions import PlannedAction, apply_plan, build_plan
+from relite.actions import apply_transitions, latest_apply_id, new_apply_id
 from relite.adb import AdbClient, AdbUnavailableError
+from relite.baseline import OwnershipStatus, validate_baseline
 from relite.classifier import ClassificationDatabase, load_database
 from relite.device import DeviceProfile, probe_device
-from relite.device_identity import default_local_root, device_local_dir, migrate_legacy_layout
+from relite.device_identity import default_local_root, device_key, device_local_dir, migrate_legacy_layout
+from relite.package_state import PackageState, state_of
 from relite.packages import list_packages
+from relite.profile_planner import DesiredTransition, plan_profile_transition
 from relite.profiles import load_profiles
 from relite.report import write_report
 from relite.restore import restore_from_journal, restore_from_snapshot
 from relite.snapshot import Snapshot, default_snapshot_dir, take_snapshot
-from relite.state import check_profile_integrity, load_state, record_profile_applied, record_snapshot_restored
+from relite.state import (
+    check_profile_integrity,
+    clear_active_profile,
+    load_state,
+    record_baseline_snapshot,
+    record_profile_applied,
+    record_snapshot_restored,
+)
 from relite.tuning import apply_animation_profile, probe_ram_expansion, set_private_dns
+from relite.validate import ValidationError, validate_local_name
 
 console = Console()
 
@@ -67,6 +78,10 @@ def _local_dir(device_profile: DeviceProfile) -> Path:
     return device_local_dir(root, device_profile.model, device_profile.serial)
 
 
+def _device_key(device_profile: DeviceProfile) -> str:
+    return device_key(default_local_root(), device_profile.model, device_profile.serial)
+
+
 def _render_header(device_profile: DeviceProfile, profile_name: str, local_dir: Path) -> None:
     label = _profile_label(profile_name)
     snapshot_exists = default_snapshot_dir(local_dir).exists()
@@ -83,23 +98,101 @@ def _render_header(device_profile: DeviceProfile, profile_name: str, local_dir: 
     console.print()
 
 
-def _render_changes(actions: list[PlannedAction]) -> None:
-    by_action: dict[str, list[PlannedAction]] = {"disable": [], "uninstall-user": []}
-    for item in actions:
-        by_action.setdefault(item.action, []).append(item)
+def _render_changes(transitions: list[DesiredTransition]) -> None:
+    by_desired: dict[PackageState, list[DesiredTransition]] = {}
+    for item in transitions:
+        by_desired.setdefault(item.desired_state, []).append(item)
 
     console.print("Changes:")
-    if by_action["disable"]:
-        console.print(f"  Disable ({len(by_action['disable'])}):")
-        for item in by_action["disable"]:
+    disabling = by_desired.get(PackageState.PRESENT_DISABLED, [])
+    removing = by_desired.get(PackageState.ABSENT_FOR_USER, [])
+    restoring = by_desired.get(PackageState.PRESENT_ENABLED, [])
+    if disabling:
+        console.print(f"  Disable ({len(disabling)}):")
+        for item in disabling:
             console.print(f"    - {item.package}")
-    if by_action["uninstall-user"]:
-        console.print(f"  Uninstall for user 0, reversible ({len(by_action['uninstall-user'])}):")
-        for item in by_action["uninstall-user"]:
+    if removing:
+        console.print(f"  Uninstall for user 0, reversible ({len(removing)}):")
+        for item in removing:
             console.print(f"    - {item.package}")
-    if not actions:
+    if restoring:
+        console.print(f"  Restore to baseline (present, enabled) ({len(restoring)}):")
+        for item in restoring:
+            console.print(f"    - {item.package}")
+    if not transitions:
         console.print("  (none — device already matches this profile)")
     console.print()
+
+
+def _current_states(client: AdbClient, db: ClassificationDatabase) -> dict[str, PackageState]:
+    installed = {pkg.name: pkg for pkg in list_packages(client)}
+    return {name: state_of(installed.get(name)) for name in db.entries}
+
+
+def _baseline_snapshot_path(local_dir: Path, name: str) -> Path:
+    return default_snapshot_dir(local_dir) / f"{name}.snapshot.json"
+
+
+def _resolve_baseline(
+    client: AdbClient,
+    serial: str,
+    local_dir: Path,
+    device_profile: DeviceProfile,
+    db: ClassificationDatabase,
+    *,
+    allow_create: bool,
+    allow_fallback_to_current: bool,
+) -> tuple[dict[str, PackageState] | None, str | None]:
+    """Section 7-8: resolve the baseline_states a profile transition
+    should be computed against. Returns (states, warning_message).
+
+    - A recorded, valid, matching-device baseline is used directly.
+    - A recorded baseline with a firmware mismatch blocks live use
+      entirely (section 5) unless `allow_fallback_to_current` — `plan`
+      previews still show something useful with a clear caveat rather
+      than refusing to render at all; `apply` does not set this.
+    - No recorded baseline: create one now (`allow_create`, `apply`
+      only) or fall back to treating current live state as the baseline
+      (`allow_fallback_to_current`, `plan` only, since it never writes
+      anything and a `keep` action is a no-op either way in that case).
+    """
+    state = load_state(local_dir / "state.json")
+    if state.baseline_snapshot:
+        path = _baseline_snapshot_path(local_dir, state.baseline_snapshot)
+        validation = validate_baseline(path, device_profile, _device_key(device_profile))
+        if validation.status == "valid" and validation.snapshot is not None:
+            return validation.snapshot.baseline_states(db), None
+        if validation.ownership == OwnershipStatus.FIRMWARE_DIFFERENT:
+            warning = (
+                f"Baseline firmware differs from current firmware ({validation.detail})."
+            )
+            fallback_note = " Showing a preview against current live state instead."
+            if allow_fallback_to_current:
+                return _current_states(client, db), warning + fallback_note
+            reconcile_note = " Refusing to apply — run 'relite snapshot --name <n> --set-baseline'."
+            return None, warning + reconcile_note
+        if validation.ownership == OwnershipStatus.DEVICE_MISMATCH:
+            warning = "Recorded baseline snapshot belongs to a different physical device."
+            if allow_fallback_to_current:
+                fallback_note = " Showing a preview against current live state instead."
+                return _current_states(client, db), warning + fallback_note
+            return None, warning
+        # missing/corrupt/unsupported_schema: fall through to (re)create below.
+
+    if allow_create:
+        dk = _device_key(device_profile)
+        auto_snap = take_snapshot(client, serial, "auto-pre-relite", db, device_key=dk)
+        auto_path = _baseline_snapshot_path(local_dir, "auto-pre-relite")
+        auto_snap.save(auto_path)
+        record_baseline_snapshot(local_dir / "state.json", "auto-pre-relite")
+        console.print(f"[green]Safety snapshot created: {auto_path}[/green]")
+        return auto_snap.baseline_states(db), None
+
+    if allow_fallback_to_current:
+        note = "No baseline snapshot recorded yet — showing a preview against current live state."
+        return _current_states(client, db), note
+
+    return None, "No usable baseline snapshot."
 
 
 @click.group()
@@ -174,17 +267,57 @@ def device(ctx: click.Context) -> None:
 
 @main.command()
 @click.option("--name", required=True, help="Snapshot name, e.g. 'stock'.")
+@click.option(
+    "--set-baseline", "set_baseline", is_flag=True, default=False,
+    help="Record this snapshot as the baseline relite apply/restore --all use.",
+)
 @click.pass_context
-def snapshot(ctx: click.Context, name: str) -> None:
+def snapshot(ctx: click.Context, name: str, set_baseline: bool) -> None:
     """Take a full snapshot of the current device state."""
+    try:
+        validate_local_name(name)
+    except ValidationError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(1)
     client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    device_dir = _find_device_dir(device_profile.model)
+    db = load_database(device_dir) if device_dir else None
     console.print("Collecting device snapshot (packages, settings, props)...")
-    snap = take_snapshot(client, serial, name)
+    snap = take_snapshot(client, serial, name, db, device_key=_device_key(device_profile))
     local_dir = _local_dir(snap.device)
     out_dir = default_snapshot_dir(local_dir)
     out_path = out_dir / f"{name}.snapshot.json"
     snap.save(out_path)
     console.print(f"[green]Saved snapshot to {out_path}[/green] ({len(snap.packages)} packages)")
+    if set_baseline:
+        record_baseline_snapshot(local_dir / "state.json", name)
+        console.print("[green]Recorded as baseline.[/green]")
+
+
+@main.command(name="baseline")
+@click.argument("snapshot_name")
+@click.pass_context
+def baseline_cmd(ctx: click.Context, snapshot_name: str) -> None:
+    """Record an *already-taken* snapshot as the baseline, without
+    retaking it (use `relite snapshot --name X --set-baseline` to take a
+    fresh one and set it in one step)."""
+    try:
+        validate_local_name(snapshot_name)
+    except ValidationError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(1)
+    client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    local_dir = _local_dir(device_profile)
+    path = _baseline_snapshot_path(local_dir, snapshot_name)
+    validation = validate_baseline(path, device_profile, _device_key(device_profile))
+    if validation.status != "valid":
+        detail = validation.detail or validation.status
+        console.print(f"[red]Cannot set '{snapshot_name}' as baseline: {detail}[/red]")
+        sys.exit(1)
+    record_baseline_snapshot(local_dir / "state.json", snapshot_name)
+    console.print(f"[green]Baseline set to '{snapshot_name}'.[/green]")
 
 
 @main.command()
@@ -231,7 +364,11 @@ def analyze(ctx: click.Context) -> None:
 )
 @click.pass_context
 def plan(ctx: click.Context, profile_name: str) -> None:
-    """Print the plan of actions a profile would apply, without applying it."""
+    """Print the plan of actions a profile would apply, without applying it.
+
+    Uses the same baseline-aware planner as `apply` (section 8 of the
+    v0.3.0 plan) — there is no second, independently-derived preview.
+    """
     client, serial = _connected_client(ctx)
     device_profile = probe_device(client, serial)
     device_dir = _find_device_dir(device_profile.model)
@@ -239,17 +376,26 @@ def plan(ctx: click.Context, profile_name: str) -> None:
         console.print(f"[red]No device profile for '{device_profile.model}'; nothing to plan.[/red]")
         return
     db = load_database(device_dir)
-    installed = list_packages(client)
-    actions = build_plan(installed, db, profile_name)  # type: ignore[arg-type]
+    local_dir = _local_dir(device_profile)
 
-    _render_header(device_profile, profile_name, _local_dir(device_profile))
-    _render_changes(actions)
+    baseline_states, warning = _resolve_baseline(
+        client, serial, local_dir, device_profile, db, allow_create=False, allow_fallback_to_current=True
+    )
+    if warning:
+        console.print(f"[yellow]{warning}[/yellow]")
+    if baseline_states is None:
+        return
+    current_states = _current_states(client, db)
+    transitions = plan_profile_transition(baseline_states, current_states, db, profile_name)  # type: ignore[arg-type]
+
+    _render_header(device_profile, profile_name, local_dir)
+    _render_changes(transitions)
 
     table = Table(title="Reasons")
     table.add_column("Package")
     table.add_column("Action")
     table.add_column("Reason")
-    for item in actions:
+    for item in transitions:
         table.add_row(item.package, item.action, item.reason)
     console.print(table)
 
@@ -261,7 +407,9 @@ def plan(ctx: click.Context, profile_name: str) -> None:
 @click.option("--dry-run", is_flag=True, default=False)
 @click.pass_context
 def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
-    """Apply a performance profile: package actions + animation scale."""
+    """Apply a profile: full state-transition pipeline (device
+    reconnaissance -> inventory -> baseline -> desired-state plan ->
+    execute -> tuning -> verify -> journal -> record) — section 8."""
     client, serial = _connected_client(ctx)
     device_profile = probe_device(client, serial)
     device_dir = _find_device_dir(device_profile.model)
@@ -269,32 +417,38 @@ def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
         console.print(f"[red]No device profile for '{device_profile.model}'; refusing to apply.[/red]")
         sys.exit(1)
     db = load_database(device_dir)
-    installed = list_packages(client)
-    actions = build_plan(installed, db, profile_name)  # type: ignore[arg-type]
     local_dir = _local_dir(device_profile)
 
+    # Section 4/7: a user must not be able to accidentally apply ReLite
+    # for the first time with no rollback point, and an apply must not
+    # proceed against a baseline that turns out to be unusable or
+    # firmware-drifted. --dry-run never creates/modifies a snapshot, so
+    # it falls back to previewing against current live state instead.
+    baseline_states, warning = _resolve_baseline(
+        client, serial, local_dir, device_profile, db,
+        allow_create=not dry_run, allow_fallback_to_current=dry_run,
+    )
+    if warning:
+        c = "yellow" if baseline_states else "red"
+        console.print(f"[{c}]{warning}[/{c}]")
+    if baseline_states is None:
+        sys.exit(1)
+
+    current_states = _current_states(client, db)
+    transitions = plan_profile_transition(baseline_states, current_states, db, profile_name)  # type: ignore[arg-type]
+
     _render_header(device_profile, profile_name, local_dir)
-    _render_changes(actions)
+    _render_changes(transitions)
     console.print(f"Protected packages: verified ({len(db.protected)} entries loaded)")
     console.print()
 
-    # Section 4: a user must not be able to accidentally apply ReLite for
-    # the first time with no rollback point. --dry-run never creates or
-    # modifies snapshots.
-    snapshot_dir = default_snapshot_dir(local_dir)
-    if not dry_run and not snapshot_dir.exists():
-        console.print("No baseline snapshot found — creating one automatically before any change...")
-        auto_snap = take_snapshot(client, serial, "auto-pre-relite")
-        auto_snap_path = snapshot_dir / "auto-pre-relite.snapshot.json"
-        auto_snap.save(auto_snap_path)
-        console.print(f"[green]Safety snapshot created: {auto_snap_path}[/green]")
-        console.print()
-
     console.print(f"Applying [{'dry-run' if dry_run else 'live'}]...")
-    records = apply_plan(client, actions, local_dir / "actions.jsonl", dry_run=dry_run)
+    apply_id = new_apply_id()
+    journal_path = local_dir / "actions.jsonl"
+    records = apply_transitions(client, apply_id, profile_name, transitions, journal_path, dry_run=dry_run)
     ok = sum(1 for r in records if r.result == "ok" or (dry_run and r.result == "dry-run"))
     failed = [r for r in records if r.result not in ("ok", "dry-run")]
-    console.print(f"[green]{ok}/{len(records)} package action(s) applied[/green]")
+    console.print(f"[green]{ok}/{len(records)} package action(s) applied[/green] (apply_id {apply_id})")
     if failed:
         console.print(f"[yellow]{len(failed)} action(s) did not take effect (platform refused):[/yellow]")
         for r in failed:
@@ -304,16 +458,16 @@ def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
         apply_animation_profile(client, profile_name)
         console.print("Animation scale applied.")
 
-        # Section 6: only mark the profile "active" if a fresh live
-        # integrity check confirms it — a partial failure must not be
-        # recorded as a clean apply.
+        # Section 6/14: only mark the profile "active" if a fresh live
+        # integrity check — package state AND managed tuning — confirms
+        # it. A partial failure must not be recorded as a clean apply.
         post_installed = list_packages(client)
-        integrity = check_profile_integrity(post_installed, db, profile_name)  # type: ignore[arg-type]
+        integrity = check_profile_integrity(post_installed, db, profile_name, client=client)  # type: ignore[arg-type]
         state = record_profile_applied(
             local_dir / "state.json",
             profile_name,
             integrity.status,
-            unexpected_failures=len(integrity.mismatches),
+            unexpected_failures=len(integrity.mismatches) + len(integrity.tuning_mismatches),
         )
         color = {"PASS": "green", "PASS_WITH_LIMITATIONS": "green", "DEGRADED": "yellow", "FAIL": "red"}
         c = color[integrity.status]
@@ -332,24 +486,59 @@ def apply(ctx: click.Context, profile_name: str, dry_run: bool) -> None:
     "--snapshot", "snapshot_name", default=None, help="Restore from a named snapshot instead of the journal."
 )
 @click.option(
-    "--all", "restore_all", is_flag=True, default=False, help="Full restore: snapshot + journal + tuning."
+    "--all", "restore_all", is_flag=True, default=False,
+    help="Full restore: the recorded baseline snapshot (not a hardcoded 'stock').",
 )
 @click.option("--dry-run", is_flag=True, default=False)
 @click.pass_context
 def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dry_run: bool) -> None:
-    """Roll back ReLite-managed changes."""
+    """Roll back ReLite-managed changes.
+
+    `--all` restores the *recorded* baseline (section 6/7) — whatever
+    `relite apply` auto-created or the user explicitly set with
+    `relite snapshot --name ... --set-baseline` — never a hardcoded
+    "stock" filename. See `relite undo` for reversing only the most
+    recent apply instead of returning to baseline.
+    """
     client, serial = _connected_client(ctx)
 
     device_profile = probe_device(client, serial)
     local_dir = _local_dir(device_profile)
 
     if snapshot_name or restore_all:
-        snap_name = snapshot_name or "stock"
-        snap_path = default_snapshot_dir(local_dir) / f"{snap_name}.snapshot.json"
-        if not snap_path.exists():
-            console.print(f"[red]Snapshot not found: {snap_path}[/red]")
-            sys.exit(1)
-        snap = Snapshot.load(snap_path)
+        if snapshot_name:
+            try:
+                validate_local_name(snapshot_name)
+            except ValidationError as exc:
+                console.print(f"[red]{exc}[/red]")
+                sys.exit(1)
+            snap_path = _baseline_snapshot_path(local_dir, snapshot_name)
+        else:
+            state = load_state(local_dir / "state.json")
+            if not state.baseline_snapshot:
+                console.print(
+                    "[red]No baseline snapshot recorded. Run 'relite apply' once (it creates one "
+                    "automatically) or 'relite snapshot --name <name> --set-baseline' explicitly.[/red]"
+                )
+                sys.exit(1)
+            snap_path = _baseline_snapshot_path(local_dir, state.baseline_snapshot)
+            snapshot_name = state.baseline_snapshot
+
+        validation = validate_baseline(snap_path, device_profile, _device_key(device_profile))
+        if validation.status != "valid":
+            if validation.ownership == OwnershipStatus.FIRMWARE_DIFFERENT:
+                console.print(
+                    f"[yellow]Baseline firmware differs from current firmware ({validation.detail}). "
+                    "Restoring package/setting state anyway — it's still this device's own recorded "
+                    "baseline, just possibly predating an OTA.[/yellow]"
+                )
+            elif validation.ownership == OwnershipStatus.DEVICE_MISMATCH:
+                console.print(f"[red]{validation.detail}[/red]")
+                sys.exit(1)
+            else:
+                console.print(f"[red]Snapshot not found or unusable ({validation.status}): {snap_path}[/red]")
+                sys.exit(1)
+        snap = validation.snapshot or Snapshot.load(snap_path)
         # restore_from_snapshot restores every ReLite-managed setting
         # (including Private DNS) to its exact pre-ReLite value — see
         # relite/snapshot.py:MANAGED_SETTINGS — never a blind "turn it
@@ -357,7 +546,7 @@ def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dr
         # before ReLite ever ran.
         result = restore_from_snapshot(client, snap, dry_run=dry_run)
         if not dry_run:
-            record_snapshot_restored(local_dir / "state.json", snap_name)
+            record_snapshot_restored(local_dir / "state.json", snapshot_name)
     else:
         result = restore_from_journal(client, local_dir / "actions.jsonl", dry_run=dry_run)
 
@@ -368,6 +557,40 @@ def restore(ctx: click.Context, snapshot_name: str | None, restore_all: bool, dr
         console.print(f"[yellow]{len(result.errors)} error(s):[/yellow]")
         for err in result.errors:
             console.print(f"  - {err}")
+
+
+@main.command()
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def undo(ctx: click.Context, dry_run: bool) -> None:
+    """Reverse the most recent `relite apply` transaction only — not the
+    device's entire ReLite history (section 12). For that, use
+    `relite restore --all`, which returns to the recorded baseline."""
+    client, serial = _connected_client(ctx)
+    device_profile = probe_device(client, serial)
+    local_dir = _local_dir(device_profile)
+    journal_path = local_dir / "actions.jsonl"
+
+    apply_id = latest_apply_id(journal_path)
+    if apply_id is None:
+        console.print("[yellow]No apply transaction found in the journal — nothing to undo.[/yellow]")
+        return
+
+    result = restore_from_journal(client, journal_path, apply_id=apply_id, dry_run=dry_run)
+    console.print(f"Undoing apply_id {apply_id}...")
+    console.print(f"[green]{len(result.packages_restored)} package(s) reverted[/green]")
+    if result.errors:
+        console.print(f"[yellow]{len(result.errors)} error(s):[/yellow]")
+        for err in result.errors:
+            console.print(f"  - {err}")
+
+    if not dry_run:
+        # Section 13: after undoing, the device is no longer cleanly "on"
+        # whatever profile that apply had recorded — never leave a stale
+        # active_profile pointing at a state that's been partially reverted.
+        clear_active_profile(local_dir / "state.json")
+        console.print("[yellow]Active profile cleared — device state is now CUSTOM/undone, "
+                      "not cleanly on any recorded profile. Run 'relite status'.[/yellow]")
 
 
 @main.command()
@@ -407,7 +630,7 @@ def status(ctx: click.Context) -> None:
     installed = list_packages(client)
 
     if state.active_profile:
-        report = check_profile_integrity(installed, db, state.active_profile)  # type: ignore[arg-type]
+        report = check_profile_integrity(installed, db, state.active_profile, client=client)  # type: ignore[arg-type]
         console.print("Profile integrity:")
         color = {"PASS": "green", "PASS_WITH_LIMITATIONS": "green", "DEGRADED": "yellow", "FAIL": "red"}
         console.print(f"  [{color[report.status]}]{report.status}[/{color[report.status]}]")
@@ -421,6 +644,10 @@ def status(ctx: click.Context) -> None:
             console.print(f"  Mismatches ({len(report.mismatches)}):")
             for m in report.mismatches:
                 console.print(f"    - {m.package}: expected {m.expected}, observed {m.observed}")
+        if report.tuning_mismatches:
+            console.print(f"  Tuning mismatches ({len(report.tuning_mismatches)}):")
+            for t in report.tuning_mismatches:
+                console.print(f"    - {t.key}: expected {t.expected}, observed {t.observed}")
         if report.known_limitations:
             console.print(f"  Known platform limitations ({len(report.known_limitations)}, not failures):")
             for lim in report.known_limitations:
@@ -429,6 +656,16 @@ def status(ctx: click.Context) -> None:
 
     console.print("Rollback:")
     console.print(f"  Snapshot on disk: {'yes' if snapshot_exists else 'no'}")
+    console.print(f"  Baseline snapshot: {state.baseline_snapshot or 'none recorded'}")
+    if state.baseline_snapshot:
+        baseline_path = _baseline_snapshot_path(local_dir, state.baseline_snapshot)
+        validation = validate_baseline(baseline_path, device_profile, _device_key(device_profile))
+        if validation.ownership == OwnershipStatus.FIRMWARE_DIFFERENT:
+            console.print(
+                f"  [red]Baseline firmware differs from current firmware[/red] — {validation.detail}"
+            )
+        elif validation.status != "valid":
+            console.print(f"  [yellow]Baseline snapshot is unusable: {validation.status}[/yellow]")
     console.print(f"  Last snapshot restored: {state.last_snapshot or 'none'}")
     console.print(f"  Action journal: {'present' if (local_dir / 'actions.jsonl').exists() else 'empty'}")
 
