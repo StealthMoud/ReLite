@@ -25,6 +25,17 @@ ANIMATION_KEYS = (
     "animator_duration_scale",
 )
 
+# Every (namespace, key) ReLite ever writes to. Restore must handle exactly
+# this set and nothing else — see docs/profiles.md and tuning.py for the
+# policy of never blindly rewriting settings ReLite doesn't own.
+MANAGED_SETTINGS: tuple[tuple[str, str], ...] = (
+    ("global", "window_animation_scale"),
+    ("global", "transition_animation_scale"),
+    ("global", "animator_duration_scale"),
+    ("global", "private_dns_mode"),
+    ("global", "private_dns_specifier"),
+)
+
 
 @dataclass
 class Snapshot:
@@ -103,5 +114,8 @@ def take_snapshot(client: AdbClient, serial: str, name: str) -> Snapshot:
     )
 
 
-def default_snapshot_dir(device_model: str) -> Path:
-    return Path(".local") / device_model / "snapshots"
+def default_snapshot_dir(device_local_dir: Path) -> Path:
+    """`device_local_dir` is the per-physical-device root, e.g. from
+    `relite.device_identity.device_local_dir()` — never a bare model name,
+    so two units of the same model never share a snapshot directory."""
+    return device_local_dir / "snapshots"

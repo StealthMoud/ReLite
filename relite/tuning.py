@@ -8,9 +8,11 @@ scope.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from relite.adb import AdbClient
+from relite.validate import validate_dns_hostname, validate_setting_key
 
 ANIMATION_PROFILES: dict[str, str] = {
     "safe": "0.5",
@@ -92,6 +94,46 @@ def set_private_dns(client: AdbClient, hostname: str | None) -> bool:
     if hostname is None:
         mode_result = client.shell("settings put global private_dns_mode off")
         return mode_result.ok
+    validate_dns_hostname(hostname)
     mode_result = client.shell("settings put global private_dns_mode hostname")
     host_result = client.shell(f"settings put global private_dns_specifier {hostname}")
     return mode_result.ok and host_result.ok
+
+
+_ANIMATION_SCALE_RE = re.compile(r"^\d+(\.\d+)?$")
+_PRIVATE_DNS_MODE_RE = re.compile(r"^(off|opportunistic|hostname)$")
+
+
+def restore_managed_setting(
+    client: AdbClient,
+    namespace: str,
+    key: str,
+    original_value: str | None,
+    *,
+    dry_run: bool = False,
+) -> None:
+    """Restore a single ReLite-managed setting to its recorded pre-ReLite
+    value, distinguishing "the key existed with this value" from "the key
+    did not exist at all" (`settings delete`, not a guessed default).
+
+    Section 3 of the v0.2.0 plan: restore must never assume a value ReLite
+    didn't originally observe — e.g. restoring Private DNS must never just
+    turn it off, since the user may have configured it before ReLite ever
+    ran.
+    """
+    validate_setting_key(key)
+    if dry_run:
+        return
+    if original_value is None:
+        client.shell(f"settings delete {namespace} {key}")
+        return
+    if key in ("window_animation_scale", "transition_animation_scale", "animator_duration_scale"):
+        if not _ANIMATION_SCALE_RE.match(original_value):
+            return
+    elif key == "private_dns_mode":
+        if not _PRIVATE_DNS_MODE_RE.match(original_value):
+            return
+    elif key == "private_dns_specifier":
+        if original_value and not re.match(r"^[A-Za-z0-9.-]+$", original_value):
+            return
+    client.shell(f"settings put {namespace} {key} {original_value}")
