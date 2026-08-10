@@ -18,10 +18,20 @@ on the RMX5303 during this pass, not just compiling it. See
 `docs/design/one-ui-current-reference.md` for the sourced Samsung
 references this work is grounded in, and
 `docs/design/one-ui-parity-matrix.md` for an honest per-surface parity
-grade — several major surfaces (Phase J's full folder redesign, the widget
-picker's visual redesign, portable widget rebind, the full stress/jank
-benchmark campaign) are explicitly out of scope for this pass; see Known
-gaps below.
+grade — several major surfaces (the widget picker's visual redesign,
+portable widget rebind, the full stress/jank benchmark campaign) are
+explicitly out of scope for this pass; see Known gaps below.
+
+A second completion pass on top of the above (same v0.5.0 milestone,
+same physical-device verification discipline) closed several of the
+gaps this section originally recorded: a `LauncherHost` interface fixes
+a real fragment-restoration hazard (activity-set lambda fields on a
+`HomePageFragment`/`AppDrawerFragment` reused rather than recreated by
+`FragmentStateAdapter` after process death silently stayed null); the
+Home↔Apps swipe gesture, runtime icon-size scaling, drag-app-onto-app
+folder creation, expanded 2×2 folders, and drag page reordering are now
+implemented and covered by live instrumentation. See the updated Known
+gaps below for what's still genuinely outstanding.
 
 ### Reliability
 
@@ -126,28 +136,44 @@ gaps below.
 ### Known gaps
 
 Deliberately not attempted or not completed this pass — recorded honestly
-rather than silently glossed over:
+rather than silently glossed over. Items struck through below were true
+gaps as of the first v0.5.0 pass and have since been closed in a second
+completion pass on the same milestone; see the dated bullets above.
 
-- **Folders**: no drag-app-onto-app creation, no expanded/enlarged folder
-  view, no Apps-screen-Custom-mode folders. The existing v0.4.1 compact
-  preview + full-dialog editor is unchanged.
+- **Folders**: drag-app-onto-app creation and an expanded/enlarged 2×2
+  folder view are now implemented (real member icons, direct launch,
+  Enlarge/Shrink context-menu actions) and covered by live instrumentation
+  (`HomeDragToFolderInstrumentationTest`, `ExpandedFolderInstrumentationTest`).
+  Still missing: **Apps-screen-Custom-mode folders** — the Apps drawer's
+  Custom order still only reorders individual apps; there is no
+  drawer-native folder concept distinct from a Home folder.
 - **Widgets**: no debug test widget fixture, no picker preview
   cards/grouping, no drag/edit-mode resize handles (still +/- buttons), no
   portable widget descriptor/rebind-on-import flow — export still drops
-  widgets entirely, same as v0.4.1.
-- **Icon size scaling**: not implemented — `IconCache` is a single
-  fixed-size shared cache created once at process start; a runtime-
-  adjustable size needs an architecture change not attempted this pass.
-- **Widget labels toggle**: no widget label UI exists at all to toggle.
-- **Home↔Apps swipe gesture**: not implemented; the dock's Apps button
-  default was deliberately kept on (not off, as the plan suggests) because
-  removing it without this gesture would leave no way to reach the drawer.
-- **Page reordering**: pages can be added/removed/set-default, not
-  dragged into a new order.
-- **Motion/haptics**: only a simple 200ms scale animation for edit-mode
-  enter/exit; no shared motion-token system, no haptic feedback anywhere,
-  no gesture-following Home↔Apps transition (since that gesture doesn't
-  exist yet).
+  widgets entirely, same as v0.4.1. An opt-in "Show widget labels" overlay
+  (off by default) is now implemented, closing the widget-labels gap
+  below.
+- ~~**Icon size scaling**: not implemented~~ — implemented: `IconSizePreference`
+  (Small/Default/Large) plus a size-aware `IconCache` keyed on
+  `"$pkg/$activity@$sizePx"` and an `IconNormalizer` that renders
+  adaptive icons at full bounds and legacy icons with a documented inset.
+- ~~**Widget labels toggle**: no widget label UI exists at all to toggle~~ —
+  implemented as an opt-in overlay; see Widgets above.
+- ~~**Home↔Apps swipe gesture**: not implemented~~ — implemented as an
+  Activity-level `dispatchTouchEvent` gesture with live-following
+  translation and fling/threshold settle, covered by
+  `HomeAppsSwipeInstrumentationTest`. The dock's Apps button default stays
+  on regardless, since a swipe gesture and an explicit button are not
+  mutually exclusive affordances.
+- ~~**Page reordering**: pages can be added/removed/set-default, not
+  dragged into a new order~~ — `WorkspaceController.reorderPages` plus a
+  drag-capable edit-mode page strip now exist; the accessible non-drag
+  "Move page left/right" menu fallback ships alongside it.
+- **Motion/haptics**: `MotionTokens` (duration/easing constants) now drives
+  the Home↔Apps swipe settle and folder drag-hover scale, and a
+  `HapticFeedbackConstants.LONG_PRESS` fires on drag pickup — but this is
+  still partial: most other surfaces (context menus, folder open/close,
+  widget edit) have no dedicated motion or haptic treatment yet.
 - **Accessibility**: existing 48dp targets and non-drag alternatives
   preserved; new surfaces (edit mode, context menu, Apps sort) were not
   run through a dedicated TalkBack/font-scale pass this session.
