@@ -25,7 +25,6 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 class HomePagerAdapter(
     activity: FragmentActivity,
     initialPageCount: Int,
-    private val configurePage: (HomePageFragment) -> Unit,
 ) : FragmentStateAdapter(activity) {
 
     var pageCount: Int = initialPageCount
@@ -48,8 +47,7 @@ class HomePagerAdapter(
         return itemGeneration == generation && position in 0 until pageCount
     }
 
-    override fun createFragment(position: Int): Fragment =
-        HomePageFragment.newInstance(position).also(configurePage)
+    override fun createFragment(position: Int): Fragment = HomePageFragment.newInstance(position)
 
     private companion object {
         const val ID_MULTIPLIER = 1_000_000L

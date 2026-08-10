@@ -1,5 +1,8 @@
 package io.relite.home.ui.folder
 
+import io.relite.home.ui.LauncherHost
+import io.relite.home.ui.launcherHost
+
 import android.app.AlertDialog
 import android.app.Dialog
 import android.os.Bundle
@@ -24,8 +27,9 @@ import io.relite.home.ui.drawer.AppDrawerAdapter
  */
 class FolderSheetDialog : DialogFragment() {
 
-    var onAppLaunch: ((AppEntry) -> Unit)? = null
-    var onWorkspaceChanged: (() -> Unit)? = null
+    // Section 5-10 (v0.5.0 completion pass): resolved via requireActivity()
+    // instead of activity-set lambda fields — see LauncherHost's kdoc.
+    private val host: LauncherHost get() = launcherHost()
 
     private lateinit var app: ReliteHomeApplication
     private lateinit var folderId: String
@@ -41,7 +45,7 @@ class FolderSheetDialog : DialogFragment() {
 
         adapter = AppDrawerAdapter(
             iconCache = app.iconCache,
-            onAppClick = { onAppLaunch?.invoke(it); dismiss() },
+            onAppClick = { host.launchComponent(it.componentKey); dismiss() },
             onAppLongClick = { entry, anchor -> showMemberMenu(entry, anchor); true },
         )
         view.findViewById<RecyclerView>(R.id.folder_recycler).apply {
@@ -52,7 +56,7 @@ class FolderSheetDialog : DialogFragment() {
         titleView.setOnClickListener { showRenameDialog() }
         view.findViewById<android.widget.Button>(R.id.folder_delete).setOnClickListener {
             app.workspaceController.removeItem(folderId)
-            onWorkspaceChanged?.invoke()
+            host.workspaceChanged()
             dismiss()
         }
         view.findViewById<android.widget.Button>(R.id.folder_add_apps).setOnClickListener {
@@ -107,7 +111,7 @@ class FolderSheetDialog : DialogFragment() {
                 MENU_ID_MOVE_RIGHT -> reorder(folder.itemComponentKeys, index, index + 1)
                 MENU_ID_REMOVE -> {
                     app.workspaceController.removeAppFromFolder(folderId, entry.componentKey)
-                    onWorkspaceChanged?.invoke()
+                    host.workspaceChanged()
                     refresh()
                 }
                 MENU_ID_APP_INFO -> {
@@ -126,7 +130,7 @@ class FolderSheetDialog : DialogFragment() {
         val moved = mutable.removeAt(from)
         mutable.add(to, moved)
         app.workspaceController.reorderFolderMembers(folderId, mutable)
-        onWorkspaceChanged?.invoke()
+        host.workspaceChanged()
         refresh()
     }
 
@@ -142,7 +146,7 @@ class FolderSheetDialog : DialogFragment() {
                 val newLabel = input.text.toString().trim().take(MAX_LABEL_LENGTH)
                 if (newLabel.isNotEmpty()) {
                     app.workspaceController.renameFolder(folderId, newLabel)
-                    onWorkspaceChanged?.invoke()
+                    host.workspaceChanged()
                     refresh()
                 }
             }
@@ -164,7 +168,7 @@ class FolderSheetDialog : DialogFragment() {
             iconCache = app.iconCache,
             onAppClick = { entry ->
                 app.workspaceController.addAppToFolder(folderId, entry.componentKey)
-                onWorkspaceChanged?.invoke()
+                host.workspaceChanged()
                 refresh()
                 dialog.dismiss()
             },

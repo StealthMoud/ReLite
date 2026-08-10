@@ -21,7 +21,6 @@ import androidx.viewpager2.widget.ViewPager2
 import android.widget.FrameLayout
 import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
-import io.relite.home.data.WorkspaceItem
 import io.relite.home.ui.drawer.AppDrawerFragment
 import io.relite.home.ui.folder.FolderSheetDialog
 import io.relite.home.ui.home.DragOverlay
@@ -36,7 +35,7 @@ import io.relite.home.ui.widget.WidgetPickerActivity
  * swipe. No notification shade, no lock screen, no quick settings — those
  * remain stock SystemUI on the stock-ROM path (master plan section 21).
  */
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), LauncherHost {
 
     private lateinit var app: ReliteHomeApplication
     private lateinit var pager: ViewPager2
@@ -98,23 +97,11 @@ class MainActivity : AppCompatActivity() {
         // pager.adapter on every edit corrupted FragmentStateAdapter's
         // fragment lifecycle (duplicate/overlapping page views, found
         // live on the RMX5303).
-        pagerAdapter = HomePagerAdapter(this, app.workspaceController.current().pageCount) { fragment ->
-            fragment.onAppLaunch = { componentKey -> launchApp(componentKey) }
-            fragment.onFolderOpen = { folder -> openFolder(folder) }
-            fragment.onWorkspaceChanged = { refreshWorkspace() }
-            fragment.onAddWidgetRequested = { widgetPickerLauncher.launch(WidgetPickerActivity.newIntent(this)) }
-            fragment.onEditModeRequested = { enterEditMode() }
-            fragment.onDragStart = { source -> dragOverlay.beginDrag(source) }
-            fragment.onDragMove = { proxy, dx, dy -> dragOverlay.moveDrag(proxy, dx, dy) }
-            fragment.onDragEnd = { proxy -> dragOverlay.endDrag(proxy) }
-            fragment.onDragEdgeHover = { direction ->
-                val itemCount = pagerAdapter.itemCount
-                val target = (pager.currentItem + direction).coerceIn(0, itemCount - 1)
-                if (target != pager.currentItem) pager.setCurrentItem(target, true)
-                pager.currentItem
-            }
-            fragment.onDragCommitted = { page -> refreshWorkspace(page) }
-        }
+        // Section 5-10 (v0.5.0 completion pass): fragments resolve this
+        // Activity as a LauncherHost themselves rather than being wired
+        // with lambda fields here — see LauncherHost's kdoc for why that
+        // wiring silently broke on process-death-restored pages.
+        pagerAdapter = HomePagerAdapter(this, app.workspaceController.current().pageCount)
         pager.adapter = pagerAdapter
 
         // Section 80/119 (v0.5.0): the very first render opens on the
@@ -290,27 +277,47 @@ class MainActivity : AppCompatActivity() {
         refreshWorkspace()
     }
 
-    private fun openFolder(folder: WorkspaceItem.FolderIcon) {
-        val dialog = FolderSheetDialog.newInstance(folder.id)
-        dialog.onAppLaunch = { launchApp(it.componentKey) }
-        dialog.onWorkspaceChanged = { refreshWorkspace() }
-        dialog.show(supportFragmentManager, "folder")
-    }
-
     private fun showAppDrawer() {
         if (drawerContainer.visibility == View.VISIBLE) return
-        val fragment = AppDrawerFragment().apply {
-            onLaunch = { launchApp(it.componentKey) }
-            onWorkspaceChanged = { refreshWorkspace() }
-        }
         supportFragmentManager.beginTransaction()
-            .replace(R.id.drawer_container, fragment)
+            .replace(R.id.drawer_container, AppDrawerFragment())
             .commit()
         drawerContainer.visibility = View.VISIBLE
     }
 
     private fun hideAppDrawer() {
         drawerContainer.visibility = View.GONE
+    }
+
+    // --- LauncherHost -------------------------------------------------
+    // Resolved by fragments via requireActivity() as LauncherHost, not by
+    // activity-set lambda fields — see LauncherHost's kdoc.
+
+    override fun launchComponent(componentKey: String) = launchApp(componentKey)
+
+    override fun openFolder(folderId: String) {
+        FolderSheetDialog.newInstance(folderId).show(supportFragmentManager, "folder")
+    }
+
+    override fun workspaceChanged(targetPage: Int?) = refreshWorkspace(targetPage)
+
+    override fun requestWidgetPicker() {
+        widgetPickerLauncher.launch(WidgetPickerActivity.newIntent(this))
+    }
+
+    override fun requestHomeEditMode() = enterEditMode()
+
+    override fun beginDrag(source: View): View = dragOverlay.beginDrag(source)
+
+    override fun moveDrag(proxy: View, dx: Float, dy: Float) = dragOverlay.moveDrag(proxy, dx, dy)
+
+    override fun endDrag(proxy: View) = dragOverlay.endDrag(proxy)
+
+    override fun requestAdjacentPage(direction: Int): Int {
+        val itemCount = pagerAdapter.itemCount
+        val target = (pager.currentItem + direction).coerceIn(0, itemCount - 1)
+        if (target != pager.currentItem) pager.setCurrentItem(target, true)
+        return pager.currentItem
     }
 
     /**

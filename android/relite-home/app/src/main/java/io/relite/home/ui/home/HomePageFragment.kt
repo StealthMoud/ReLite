@@ -1,5 +1,8 @@
 package io.relite.home.ui.home
 
+import io.relite.home.ui.LauncherHost
+import io.relite.home.ui.launcherHost
+
 import android.appwidget.AppWidgetHostView
 import android.content.Intent
 import android.net.Uri
@@ -30,28 +33,12 @@ import kotlin.math.hypot
  */
 class HomePageFragment : Fragment(R.layout.fragment_home_page) {
 
-    var onAppLaunch: ((String) -> Unit)? = null
-    var onFolderOpen: ((WorkspaceItem.FolderIcon) -> Unit)? = null
-    var onWorkspaceChanged: (() -> Unit)? = null
-    var onAddWidgetRequested: (() -> Unit)? = null
-
-    /** Section 112 (v0.5.0): long-pressing empty Home space now enters the real edit-mode surface, not a plain dialog. */
-    var onEditModeRequested: (() -> Unit)? = null
-
-    // Section 4-6 (v0.4.0 cross-page drag): the dragged icon is rendered as
-    // a proxy in a full-screen overlay owned by MainActivity, not as this
-    // page's own child view, because ViewPager2 may swap this fragment's
-    // page out from under the drag mid-gesture. onDragEdgeHover switches
-    // the pager's current page and returns whichever page ends up current;
-    // onDragCommitted replaces the plain onWorkspaceChanged call for a
-    // successful drop so MainActivity can restore the pager to the page the
-    // item was actually dropped on (a full adapter rebuild would otherwise
-    // reset the scroll position to page 0).
-    var onDragStart: ((source: View) -> View)? = null
-    var onDragMove: ((proxy: View, dx: Float, dy: Float) -> Unit)? = null
-    var onDragEnd: ((proxy: View) -> Unit)? = null
-    var onDragEdgeHover: ((direction: Int) -> Int)? = null
-    var onDragCommitted: ((page: Int) -> Unit)? = null
+    // Section 5-10 (v0.5.0 completion pass): resolved fresh on every call
+    // via requireActivity() instead of activity-set lambda fields, which
+    // silently stayed null on a page fragment reused (not recreated) by
+    // FragmentStateAdapter after process-death restoration — see
+    // LauncherHost's kdoc.
+    private val host: LauncherHost get() = launcherHost()
 
     private lateinit var grid: WorkspaceGridLayout
     private var pageIndex: Int = 0
@@ -76,7 +63,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
 
         // Section 20-21/112 (v0.5.0): long-pressing empty grid space (not
         // consumed by any item's own listener) enters Home edit mode.
-        grid.setOnLongClickListener { onEditModeRequested?.invoke(); true }
+        grid.setOnLongClickListener { host.requestHomeEditMode(); true }
 
         // Section 41 (v0.5.0): keep the process-wide last-known grid metrics
         // fresh on every measure pass (rotation, grid-preset change, first
@@ -207,8 +194,8 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     private fun wireInteractions(app: ReliteHomeApplication, item: WorkspaceItem, cellView: View) {
         cellView.setOnClickListener {
             when (item) {
-                is WorkspaceItem.AppIcon -> onAppLaunch?.invoke(item.componentKey)
-                is WorkspaceItem.FolderIcon -> onFolderOpen?.invoke(item)
+                is WorkspaceItem.AppIcon -> host.launchComponent(item.componentKey)
+                is WorkspaceItem.FolderIcon -> host.openFolder(item.id)
                 is WorkspaceItem.WidgetIcon -> Unit
             }
         }
@@ -240,7 +227,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             // after the current dispatch cycle finishes, which is safe.
             cellView.post {
                 if (dragArmed) {
-                    proxy = onDragStart?.invoke(cellView)
+                    proxy = host.beginDrag(cellView)
                     cellView.alpha = 0f
                 }
             }
@@ -260,7 +247,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                         val dy = event.rawY - downRawY
                         val currentProxy = proxy
                         if (currentProxy != null) {
-                            onDragMove?.invoke(currentProxy, dx, dy)
+                            host.moveDrag(currentProxy, dx, dy)
                             updateDropFeedback(app, item, currentProxy, dragTargetPage)
                             updateEdgeHover(event.rawX) { newPage -> dragTargetPage = newPage }
                         }
@@ -306,8 +293,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         if (edgeHoverRunnable != null) return // already armed for this hover
         val runnable = Runnable {
             edgeHoverRunnable = null
-            val newPage = onDragEdgeHover?.invoke(direction)
-            if (newPage != null) onPageChanged(newPage)
+            onPageChanged(host.requestAdjacentPage(direction))
         }
         edgeHoverRunnable = runnable
         edgeHoverHandler.postDelayed(runnable, EDGE_HOVER_DELAY_MS)
@@ -355,7 +341,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             return
         }
         if (!moved) {
-            onDragEnd?.invoke(proxy)
+            host.endDrag(proxy)
             original.alpha = 1f
             showLongPressMenu(app, item, original)
             return
@@ -364,9 +350,9 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         val cell = targetCellFor(proxy)
         val target = cell?.let { GridPosition(targetPage, it.first, it.second) }
         val ok = target != null && app.workspaceController.moveItem(item.id, target)
-        onDragEnd?.invoke(proxy)
+        host.endDrag(proxy)
         if (ok) {
-            onDragCommitted?.invoke(targetPage)
+            host.workspaceChanged(targetPage)
         } else {
             original.alpha = 1f
             if (targetPage != pageIndex) {
@@ -374,7 +360,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 // land back on the page the drag actually started from
                 // rather than stranding the user on a page with nothing to
                 // show for the failed drag.
-                onDragCommitted?.invoke(pageIndex)
+                host.workspaceChanged(pageIndex)
             }
         }
     }
@@ -411,7 +397,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                     } else {
                         app.workspaceController.removeItem(item.id)
                     }
-                    onWorkspaceChanged?.invoke()
+                    host.workspaceChanged()
                 }
                 MENU_ID_PIN_TO_DOCK -> {
                     if (item is WorkspaceItem.AppIcon) {
@@ -419,7 +405,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                         if (!pinned) {
                             Toast.makeText(requireContext(), R.string.dock_full, Toast.LENGTH_SHORT).show()
                         } else {
-                            onWorkspaceChanged?.invoke()
+                            host.workspaceChanged()
                         }
                     }
                 }
@@ -432,7 +418,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                             app.workspaceController,
                             item.componentKey,
                             existingHomeItemId = item.id,
-                        ) { onWorkspaceChanged?.invoke() }
+                        ) { host.workspaceChanged() }
                     }
                 }
                 MENU_ID_APP_INFO -> {
@@ -469,7 +455,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 spanColumns = newColumns
                 spanRows = newRows
                 refreshLabel()
-                onWorkspaceChanged?.invoke()
+                host.workspaceChanged()
             } else {
                 Toast.makeText(requireContext(), R.string.resize_no_room, Toast.LENGTH_SHORT).show()
             }
@@ -513,7 +499,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 if (!moved) {
                     android.widget.Toast.makeText(requireContext(), R.string.move_no_room, android.widget.Toast.LENGTH_SHORT).show()
                 } else {
-                    onWorkspaceChanged?.invoke()
+                    host.workspaceChanged()
                 }
             }
             .setNegativeButton(R.string.cancel, null)

@@ -1,5 +1,8 @@
 package io.relite.home.ui.drawer
 
+import io.relite.home.ui.LauncherHost
+import io.relite.home.ui.launcherHost
+
 import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
@@ -38,8 +41,12 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     private var appsChangedSubscription: AppRepository.Subscription? = null
     private var sortMode: AppsSortMode = AppsSortMode.CUSTOM
 
-    var onLaunch: ((AppEntry) -> Unit)? = null
-    var onWorkspaceChanged: (() -> Unit)? = null
+    // Section 5-10 (v0.5.0 completion pass): the drawer is added via a plain
+    // FragmentTransaction (not a FragmentStateAdapter), so it has the same
+    // restoration hazard as home pages did — a process-death-restored
+    // instance never runs through the caller's configure block again.
+    // Resolving the host via requireActivity() works regardless.
+    private val host: LauncherHost get() = launcherHost()
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val app = requireActivity().application as ReliteHomeApplication
@@ -47,7 +54,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
 
         adapter = AppDrawerAdapter(
             iconCache = app.iconCache,
-            onAppClick = { onLaunch?.invoke(it) },
+            onAppClick = { host.launchComponent(it.componentKey) },
             // Section 92 (v0.5.0): in Custom order, long-press starts a
             // drag instead of opening the action menu — Alphabetical order
             // (and search results, which are always alphabetically ranked
@@ -224,7 +231,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
             when (actionId) {
                 MENU_ID_ADD_TO_HOME -> {
                     app.workspaceController.addApp(entry.componentKey)
-                    onWorkspaceChanged?.invoke()
+                    host.workspaceChanged()
                 }
                 MENU_ID_PIN_TO_DOCK -> {
                     // Section 28: pinning leaves any existing home shortcut for the
@@ -233,7 +240,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
                     if (!pinned) {
                         Toast.makeText(requireContext(), R.string.dock_full, Toast.LENGTH_SHORT).show()
                     } else {
-                        onWorkspaceChanged?.invoke()
+                        host.workspaceChanged()
                     }
                 }
                 MENU_ID_ADD_TO_FOLDER -> {
@@ -241,7 +248,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
                         requireContext(),
                         app.workspaceController,
                         entry.componentKey,
-                    ) { onWorkspaceChanged?.invoke() }
+                    ) { host.workspaceChanged() }
                 }
                 MENU_ID_APP_INFO -> openAppInfo(entry.packageName)
             }
