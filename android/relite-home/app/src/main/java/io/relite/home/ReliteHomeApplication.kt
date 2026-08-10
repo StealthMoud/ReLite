@@ -49,6 +49,18 @@ class ReliteHomeApplication : Application() {
     lateinit var appWidgetHost: ReliteAppWidgetHost
         private set
 
+    /**
+     * Section 41-42 (v0.5.0): the real measured cell geometry of the last
+     * Home page grid to lay out, kept here (not read fresh) because
+     * [io.relite.home.ui.widget.WidgetPickerActivity] needs a real cell size
+     * to derive a provider's initial span before it — a separate screen with
+     * no grid view of its own — has ever shown one. Null only before Home
+     * has laid out for the very first time in this process, which cannot
+     * happen in practice since the widget picker is only reachable from an
+     * already-visible Home page.
+     */
+    var lastGridMetrics: io.relite.home.ui.home.WorkspaceGridLayout.GridMetrics? = null
+
     override fun onCreate() {
         super.onCreate()
         // Applied before any Activity is created, so there's no flash of

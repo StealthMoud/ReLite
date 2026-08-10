@@ -77,6 +77,15 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         // item's own listener) offers page management — the required minimum
         // UI for the addPage/removeEmptyPage controller methods.
         grid.setOnLongClickListener { showPageManagementMenu(app, pageItems.isEmpty()); true }
+
+        // Section 41 (v0.5.0): keep the process-wide last-known grid metrics
+        // fresh on every measure pass (rotation, grid-preset change, first
+        // layout) so WidgetPickerActivity always has a real cell size to
+        // derive an initial span from, not just whichever page happened to
+        // measure first.
+        grid.viewTreeObserver.addOnGlobalLayoutListener {
+            grid.currentMetrics()?.let { app.lastGridMetrics = it }
+        }
     }
 
     private fun spanOf(item: WorkspaceItem): Pair<Int, Int> = when (item) {
@@ -132,19 +141,42 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         // the provider's component name when no friendlier label is known.
         hostView.contentDescription = item.providerComponent.substringAfterLast(".").ifBlank { item.providerComponent }
 
-        // Section 13-14: notify the provider of the current rendered size
-        // whenever its view is (re)built — including right after a resize,
-        // since a resize always triggers a full page rebuild via
-        // onWorkspaceChanged rather than mutating the live view in place.
-        val gridSpec = app.workspaceController.gridSpec
-        val density = requireContext().resources.displayMetrics.density
-        val cellSizeDp = (requireContext().resources.displayMetrics.widthPixels / gridSpec.columns) / density
-        app.appWidgetHost.notifyResized(
-            hostView,
-            (item.spanColumns * cellSizeDp).toInt(),
-            (item.spanRows * cellSizeDp).toInt(),
-        )
+        // Section 13-14/43 (v0.5.0): notify the provider of the current
+        // rendered size whenever its view is (re)built — including right
+        // after a resize, since a resize always triggers a full page
+        // rebuild via onWorkspaceChanged rather than mutating the live view
+        // in place. Uses the grid's real measured (non-square) cell
+        // rectangle rather than a width-derived square approximation — see
+        // WorkspaceGridLayout.GridMetrics's kdoc. The grid may not have
+        // measured yet on this very first build (the widget's cell view is
+        // added during onViewCreated, before layout), so this defers to the
+        // next global layout pass rather than notifying with a stale/zero
+        // size.
+        notifyWidgetResizeWhenMeasured(app, hostView, item)
         return hostView
+    }
+
+    private fun notifyWidgetResizeWhenMeasured(
+        app: ReliteHomeApplication,
+        hostView: AppWidgetHostView,
+        item: WorkspaceItem.WidgetIcon,
+    ) {
+        val density = requireContext().resources.displayMetrics.density
+        fun notifyWithCurrentMetrics(): Boolean {
+            val metrics = grid.currentMetrics() ?: return false
+            val widthDp = (metrics.cellWidthPx * item.spanColumns / density).toInt()
+            val heightDp = (metrics.cellHeightPx * item.spanRows / density).toInt()
+            app.appWidgetHost.notifyResized(hostView, widthDp, heightDp)
+            return true
+        }
+        if (!notifyWithCurrentMetrics()) {
+            grid.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    grid.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                    notifyWithCurrentMetrics()
+                }
+            })
+        }
     }
 
     private fun iconFor(app: ReliteHomeApplication, item: WorkspaceItem) = when (item) {

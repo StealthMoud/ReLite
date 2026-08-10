@@ -62,6 +62,37 @@ class WorkspaceGridLayout @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Section 41 (v0.5.0): the grid's actual measured cell geometry, or
+     * null before the first measure pass. Previously, code that needed a
+     * cell size before this view had ever been measured (the widget picker,
+     * computing an initial span) approximated one from raw display width
+     * divided by column count, assuming square cells that ignore both the
+     * real per-row height and any padding — wrong whenever rows and columns
+     * differ, which is now always true (4x6/5x6 grids are never square).
+     * [columnGapPx]/[rowGapPx] are 0 until inter-cell gaps are implemented
+     * (master plan section 70, not done this pass) — present now so
+     * consumers don't need a second signature change later.
+     */
+    data class GridMetrics(
+        val contentWidthPx: Int,
+        val contentHeightPx: Int,
+        val cellWidthPx: Int,
+        val cellHeightPx: Int,
+        val columnGapPx: Int = 0,
+        val rowGapPx: Int = 0,
+    )
+
+    fun currentMetrics(): GridMetrics? {
+        if (cellWidth <= 0 || cellHeight <= 0) return null
+        return GridMetrics(
+            contentWidthPx = max(0, width - paddingLeft - paddingRight),
+            contentHeightPx = max(0, height - paddingTop - paddingBottom),
+            cellWidthPx = cellWidth,
+            cellHeightPx = cellHeight,
+        )
+    }
+
     /** Pixel rectangle a cell at (column, row) with the given span currently occupies — used by drag/drop hit-testing. */
     fun cellRectPx(column: Int, row: Int, spanColumns: Int = 1, spanRows: Int = 1): android.graphics.Rect {
         val left = paddingLeft + column * cellWidth

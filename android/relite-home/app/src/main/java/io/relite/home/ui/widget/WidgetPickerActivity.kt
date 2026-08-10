@@ -132,13 +132,22 @@ class WidgetPickerActivity : AppCompatActivity() {
         configureLauncher.launch(configureIntent)
     }
 
-    /** Section 48: derive an initial span from the provider's declared minimum size, clamped to the grid. */
+    /**
+     * Section 41-42/48 (v0.5.0): derive an initial span from the provider's
+     * declared minimum size against the grid's *real* measured (non-square)
+     * cell rectangle, recorded by the last Home page to lay out
+     * ([ReliteHomeApplication.lastGridMetrics]) — falling back to the old
+     * width-derived square-cell approximation only in the practically
+     * unreachable case that Home has never laid out a grid in this process.
+     */
     private fun finishSuccess(appWidgetId: Int, provider: AppWidgetProviderInfo) {
         val gridSpec = app.workspaceController.gridSpec
         val density = resources.displayMetrics.density
-        val cellSizePx = resources.displayMetrics.widthPixels / gridSpec.columns
-        val spanColumns = ceil(provider.minWidth * density / cellSizePx).toInt().coerceIn(1, gridSpec.columns)
-        val spanRows = ceil(provider.minHeight * density / cellSizePx).toInt().coerceIn(1, gridSpec.rows)
+        val metrics = app.lastGridMetrics
+        val cellWidthPx = metrics?.cellWidthPx ?: (resources.displayMetrics.widthPixels / gridSpec.columns)
+        val cellHeightPx = metrics?.cellHeightPx ?: cellWidthPx
+        val spanColumns = ceil(provider.minWidth * density / cellWidthPx).toInt().coerceIn(1, gridSpec.columns)
+        val spanRows = ceil(provider.minHeight * density / cellHeightPx).toInt().coerceIn(1, gridSpec.rows)
 
         val itemId = app.workspaceController.addWidget(
             appWidgetId = appWidgetId,
