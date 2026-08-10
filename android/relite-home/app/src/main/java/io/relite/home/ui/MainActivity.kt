@@ -395,11 +395,21 @@ class MainActivity : AppCompatActivity(), LauncherHost {
         editModePageStrip.addView(addChip)
     }
 
+    /**
+     * Section 27-28 (v0.5.0 completion pass): "Move left"/"Move right"
+     * rather than a raw drag gesture on the page strip — the same
+     * accessible-reorder pattern already used for dock icons and folder
+     * members elsewhere in this launcher (a menu action always works, a
+     * drag gesture is a nice-to-have on top of it, not a replacement).
+     */
     private fun showPageChipMenu(page: Int) {
+        val pageCount = app.workspaceController.current().pageCount
         val canRemove = page > 0 &&
             app.workspaceController.current().items.none { it.position.page == page }
         val options = buildList {
             add(getString(R.string.edit_mode_set_default_page))
+            if (page > 0) add(getString(R.string.edit_mode_move_page_left))
+            if (page < pageCount - 1) add(getString(R.string.edit_mode_move_page_right))
             if (canRemove) add(getString(R.string.edit_mode_remove_page))
         }
         android.app.AlertDialog.Builder(this)
@@ -410,6 +420,8 @@ class MainActivity : AppCompatActivity(), LauncherHost {
                         android.widget.Toast.makeText(this, R.string.edit_mode_default_page_set, android.widget.Toast.LENGTH_SHORT).show()
                         refreshWorkspace()
                     }
+                    getString(R.string.edit_mode_move_page_left) -> movePage(page, page - 1)
+                    getString(R.string.edit_mode_move_page_right) -> movePage(page, page + 1)
                     getString(R.string.edit_mode_remove_page) -> {
                         if (app.workspaceController.removeEmptyPage(page)) {
                             android.widget.Toast.makeText(this, R.string.edit_mode_page_removed, android.widget.Toast.LENGTH_SHORT).show()
@@ -422,6 +434,16 @@ class MainActivity : AppCompatActivity(), LauncherHost {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    private fun movePage(from: Int, to: Int) {
+        val pageCount = app.workspaceController.current().pageCount
+        val order = (0 until pageCount).toMutableList()
+        val moved = order.removeAt(from)
+        order.add(to, moved)
+        if (app.workspaceController.reorderPages(order)) {
+            refreshWorkspace(to)
+        }
     }
 
     // No onDestroy() override here on purpose: appRepository is owned by

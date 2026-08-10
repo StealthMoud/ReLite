@@ -34,6 +34,8 @@
     <string name="edit_mode_page_number">%1$d</string>
     <string name="edit_mode_set_default_page">Set as default page</string>
     <string name="edit_mode_default_page_set">Default page set</string>
+    <string name="edit_mode_move_page_left">Move page left</string>
+    <string name="edit_mode_move_page_right">Move page right</string>
     <string name="edit_mode_remove_page">Remove this empty page</string>
     <string name="edit_mode_page_removed">Page removed</string>
     <string name="edit_mode_page_not_removable">Only an empty page (not the first) can be removed</string>

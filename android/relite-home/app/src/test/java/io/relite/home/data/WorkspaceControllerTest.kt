@@ -783,6 +783,55 @@ class WorkspaceControllerTest {
         assertEquals(1, controller.current().defaultPage)
     }
 
+    // --- reorderPages (sections 27-28, v0.5.0 completion pass) ---
+
+    @Test
+    fun `reorderPages moves an item's page index without touching column, row, or span`() {
+        controller.addPage()
+        controller.addPage()
+        val id = controller.addApp("io.relite.camera/Main")!!
+        controller.moveToPage(id, 2)
+        val before = controller.current().items.single { it.id == id }.position
+
+        assertTrue(controller.reorderPages(listOf(2, 0, 1))) // old page 2 -> new index 0
+
+        val after = controller.current().items.single { it.id == id }.position
+        assertEquals(0, after.page)
+        assertEquals(before.column, after.column)
+        assertEquals(before.row, after.row)
+    }
+
+    @Test
+    fun `reorderPages remaps defaultPage to follow the same physical page`() {
+        controller.addPage()
+        controller.addPage()
+        controller.setDefaultPage(2)
+
+        assertTrue(controller.reorderPages(listOf(2, 0, 1))) // old page 2 -> new index 0
+
+        assertEquals(0, controller.current().defaultPage)
+    }
+
+    @Test
+    fun `reorderPages rejects a list that is not a permutation of the page indices`() {
+        controller.addPage()
+        assertFalse(controller.reorderPages(listOf(0, 0)))
+        assertFalse(controller.reorderPages(listOf(0, 2)))
+        assertFalse(controller.reorderPages(listOf(0)))
+    }
+
+    @Test
+    fun `reorderPages persists across reload`() {
+        controller.addPage()
+        val id = controller.addApp("io.relite.camera/Main")!!
+        controller.moveToPage(id, 1)
+
+        assertTrue(controller.reorderPages(listOf(1, 0)))
+
+        val reloaded = WorkspaceController(repository, TEST_DOCK_CAPACITY)
+        assertEquals(0, reloaded.current().items.single { it.id == id }.position.page)
+    }
+
     // --- replaceWorkspaceSafely (section 44, v0.5.0) ---
 
     @Test

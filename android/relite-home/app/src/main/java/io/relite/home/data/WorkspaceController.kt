@@ -173,6 +173,28 @@ class WorkspaceController(
     }
 
     /**
+     * Section 27-28 (v0.5.0 completion pass): reorders pages themselves —
+     * distinct from [changeHomeGrid], which reflows items within a fixed
+     * page count. [newOrder] must be a permutation of `0 until pageCount`;
+     * `newOrder[i]` names which *old* page index now sits at new index `i`.
+     * Every item keeps its (column, row, span) — only its page index moves —
+     * and [Workspace.defaultPage] is remapped along with everything else so
+     * "the default page" still points at the same physical page it did
+     * before the reorder.
+     */
+    fun reorderPages(newOrder: List<Int>): Boolean {
+        val pageCount = workspace.pageCount
+        if (newOrder.size != pageCount) return false
+        if (newOrder.toSet() != (0 until pageCount).toSet()) return false
+        val oldToNew = IntArray(pageCount)
+        newOrder.forEachIndexed { newIndex, oldIndex -> oldToNew[oldIndex] = newIndex }
+        return mutate { ws ->
+            val remapped = ws.items.map { item -> withPosition(item, item.position.copy(page = oldToNew[item.position.page])) }
+            ws.copy(items = remapped, defaultPage = oldToNew[ws.defaultPage])
+        }
+    }
+
+    /**
      * Section 55-59 (v0.5.0): switches the Home grid preset, reflowing any
      * item that no longer fits (or now collides) rather than ever dropping
      * it. An item keeps its exact cell if it's still valid there under the
