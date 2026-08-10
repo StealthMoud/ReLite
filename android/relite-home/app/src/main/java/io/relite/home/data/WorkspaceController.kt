@@ -189,6 +189,54 @@ class WorkspaceController(
         return removeItem(folderId)
     }
 
+    /**
+     * Section 29 (v0.5.0): folds an existing home app being folded into an
+     * existing folder into one transaction. The previous UI-level pattern
+     * called [addAppToFolder] then, on success, a separate [removeItem] —
+     * if that second save failed, the app ended up duplicated: a member of
+     * the folder *and* still its own standalone home shortcut.
+     */
+    fun moveHomeAppIntoFolder(itemId: String, folderId: String): Boolean {
+        val item = workspace.items.find { it.id == itemId } as? WorkspaceItem.AppIcon ?: return false
+        val folder = findFolder(folderId) ?: return false
+        if (item.componentKey in folder.itemComponentKeys) return false
+        return mutate { ws ->
+            ws.copy(
+                items = ws.items.mapNotNull { current ->
+                    when {
+                        current.id == itemId -> null
+                        current.id == folderId && current is WorkspaceItem.FolderIcon ->
+                            current.copy(itemComponentKeys = current.itemComponentKeys + item.componentKey)
+                        else -> current
+                    }
+                },
+            )
+        }
+    }
+
+    /**
+     * Section 30 (v0.5.0): converts an existing standalone home app into a
+     * brand-new folder occupying the same cell, with the app as its sole
+     * member — one transaction instead of [createFolder] followed by a
+     * separate [removeItem].
+     */
+    fun convertHomeAppToFolder(itemId: String, label: String): String? {
+        val item = workspace.items.find { it.id == itemId } as? WorkspaceItem.AppIcon ?: return null
+        val id = newId()
+        val ok = mutate { ws ->
+            ws.copy(
+                items = ws.items.mapNotNull { current ->
+                    if (current.id == itemId) {
+                        WorkspaceItem.FolderIcon(id, item.position, label, listOf(item.componentKey))
+                    } else {
+                        current
+                    }
+                },
+            )
+        }
+        return if (ok) id else null
+    }
+
     // --- widgets ---
 
     /** Section 34 (v0.4.1): same one-mutate guarantee as [addApp] — see its doc comment. */

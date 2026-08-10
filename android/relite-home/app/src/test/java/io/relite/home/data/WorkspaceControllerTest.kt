@@ -633,6 +633,80 @@ class WorkspaceControllerTest {
         assertEquals(GridPosition(0, 0, 0), ctrl.current().items.single().position)
     }
 
+    // --- atomic app<->folder operations (sections 29/30, v0.5.0) ---
+
+    @Test
+    fun `moveHomeAppIntoFolder removes the standalone shortcut and adds it as a folder member in one transaction`() {
+        val folderId = controller.createFolder("Games", listOf("io.relite.chess/Main"))!!
+        val appId = controller.addApp("io.relite.sudoku/Main", GridPosition(0, 1, 0))!!
+
+        assertTrue(controller.moveHomeAppIntoFolder(appId, folderId))
+
+        assertNull(controller.current().items.find { it.id == appId })
+        val folder = controller.current().items.filterIsInstance<WorkspaceItem.FolderIcon>().single()
+        assertEquals(listOf("io.relite.chess/Main", "io.relite.sudoku/Main"), folder.itemComponentKeys)
+    }
+
+    @Test
+    fun `moveHomeAppIntoFolder rejects a duplicate member`() {
+        val folderId = controller.createFolder("Games", listOf("io.relite.chess/Main"))!!
+        val appId = controller.addApp("io.relite.chess/Main", GridPosition(0, 1, 0))!!
+
+        assertFalse(controller.moveHomeAppIntoFolder(appId, folderId))
+        assertNotNull(controller.current().items.find { it.id == appId })
+    }
+
+    @Test
+    fun `a failed save during moveHomeAppIntoFolder leaves both the shortcut and folder membership unchanged`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage, TEST_SPEC)
+        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        val folderId = ctrl.createFolder("Games", listOf("io.relite.chess/Main"))!!
+        val appId = ctrl.addApp("io.relite.sudoku/Main", GridPosition(0, 1, 0))!!
+
+        storage.failWrites = true
+        assertFalse(ctrl.moveHomeAppIntoFolder(appId, folderId))
+
+        // Section 29: before this was atomic, a failure here (after a
+        // separate successful addAppToFolder save) could have left the app
+        // duplicated — both a folder member and a standalone shortcut.
+        assertNotNull(ctrl.current().items.find { it.id == appId })
+        val folder = ctrl.current().items.filterIsInstance<WorkspaceItem.FolderIcon>().single()
+        assertEquals(listOf("io.relite.chess/Main"), folder.itemComponentKeys)
+    }
+
+    @Test
+    fun `convertHomeAppToFolder replaces the app with a new folder at the same cell`() {
+        val appId = controller.addApp("io.relite.chess/Main", GridPosition(0, 2, 1))!!
+
+        val folderId = controller.convertHomeAppToFolder(appId, "Games")
+
+        assertNotNull(folderId)
+        assertNull(controller.current().items.find { it.id == appId })
+        val folder = controller.current().items.filterIsInstance<WorkspaceItem.FolderIcon>().single()
+        assertEquals(GridPosition(0, 2, 1), folder.position)
+        assertEquals(listOf("io.relite.chess/Main"), folder.itemComponentKeys)
+        assertEquals("Games", folder.label)
+    }
+
+    @Test
+    fun `a failed save during convertHomeAppToFolder leaves the original shortcut in place`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage, TEST_SPEC)
+        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        val appId = ctrl.addApp("io.relite.chess/Main", GridPosition(0, 2, 1))!!
+
+        storage.failWrites = true
+        val folderId = ctrl.convertHomeAppToFolder(appId, "Games")
+
+        assertNull(folderId)
+        // Section 30: before this was atomic, a failure here (after a
+        // separate successful createFolder save) could have left both the
+        // new folder AND the original shortcut committed to disk.
+        assertNotNull(ctrl.current().items.find { it.id == appId })
+        assertTrue(ctrl.current().items.filterIsInstance<WorkspaceItem.FolderIcon>().isEmpty())
+    }
+
     private companion object {
         val TEST_SPEC = LauncherGridSpec(columns = 4, rows = 4, dockCapacity = 5)
     }

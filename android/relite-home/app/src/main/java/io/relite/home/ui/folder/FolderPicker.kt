@@ -53,11 +53,18 @@ object FolderPicker {
             .setView(input)
             .setPositiveButton(R.string.ok) { _, _ ->
                 val label = input.text.toString().trim().ifEmpty { context.getString(R.string.new_folder_label) }
-                val folderId = controller.createFolder(label, listOf(componentKey))
-                if (folderId == null) {
+                // Section 30 (v0.5.0): a single atomic conversion when an
+                // existing home app is being folded in — see
+                // WorkspaceController.convertHomeAppToFolder's kdoc for why
+                // this must not be two separate saves.
+                val ok = if (existingHomeItemId != null) {
+                    controller.convertHomeAppToFolder(existingHomeItemId, label) != null
+                } else {
+                    controller.createFolder(label, listOf(componentKey)) != null
+                }
+                if (!ok) {
                     Toast.makeText(context, R.string.workspace_full, Toast.LENGTH_SHORT).show()
                 } else {
-                    if (existingHomeItemId != null) controller.removeItem(existingHomeItemId)
                     onDone()
                 }
             }
@@ -72,8 +79,14 @@ object FolderPicker {
         existingHomeItemId: String?,
         onDone: () -> Unit,
     ) {
-        val added = controller.addAppToFolder(folderId, componentKey)
-        if (added && existingHomeItemId != null) controller.removeItem(existingHomeItemId)
+        // Section 29 (v0.5.0): one atomic move when folding an existing home
+        // app into an existing folder, instead of addAppToFolder followed by
+        // a separate removeItem.
+        if (existingHomeItemId != null) {
+            controller.moveHomeAppIntoFolder(existingHomeItemId, folderId)
+        } else {
+            controller.addAppToFolder(folderId, componentKey)
+        }
         onDone()
     }
 }
