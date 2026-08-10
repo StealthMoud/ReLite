@@ -474,8 +474,12 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         android.app.AlertDialog.Builder(requireContext())
             .setTitle(R.string.action_move_to_page)
             .setItems(labels.toTypedArray()) { _, which ->
-                val targetPage = if (which < pageCount) which else app.workspaceController.addPage()
-                if (targetPage < 0 || !app.workspaceController.moveToPage(item.id, targetPage)) {
+                val moved = if (which < pageCount) {
+                    app.workspaceController.moveToPage(item.id, which)
+                } else {
+                    app.workspaceController.moveToNewPage(item.id)
+                }
+                if (!moved) {
                     android.widget.Toast.makeText(requireContext(), R.string.move_no_room, android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     onWorkspaceChanged?.invoke()

@@ -35,11 +35,35 @@ class WorkspaceController(
 
     // --- home screen items ---
 
+    /**
+     * Section 33 (v0.4.1): auto-placement that needs a fresh page now folds
+     * the page-count bump and the new item into a single [mutate] call. The
+     * previous version called [addPage] (its own persisted save) and then a
+     * second, separate save for the item — if that second save failed, an
+     * empty extra page was left committed to disk with nothing on it.
+     */
     fun addApp(componentKey: String, position: GridPosition? = null): String? {
-        val target = position ?: findFreeCellOrNewPage() ?: return null
-        if (!isFree(GridRect.of(target, 1, 1))) return null
+        if (position != null) {
+            if (!isFree(GridRect.of(position, 1, 1))) return null
+            val id = newId()
+            return if (mutate { it.copy(items = it.items + WorkspaceItem.AppIcon(id, position, componentKey)) }) id else null
+        }
+        findFreeCell()?.let { target ->
+            val id = newId()
+            return if (mutate { it.copy(items = it.items + WorkspaceItem.AppIcon(id, target, componentKey)) }) id else null
+        }
+        if (workspace.pageCount >= MAX_AUTO_PAGES) return null
+        val newPageIndex = workspace.pageCount
+        val target = GridPosition(newPageIndex, 0, 0)
         val id = newId()
-        return if (mutate { it.copy(items = it.items + WorkspaceItem.AppIcon(id, target, componentKey)) }) id else null
+        return if (mutate {
+                it.copy(pageCount = it.pageCount + 1, items = it.items + WorkspaceItem.AppIcon(id, target, componentKey))
+            }
+        ) {
+            id
+        } else {
+            null
+        }
     }
 
     fun removeItem(itemId: String): Boolean =
@@ -57,6 +81,28 @@ class WorkspaceController(
         val item = workspace.items.find { it.id == itemId } ?: return false
         val span = spanOf(item)
         return isFree(GridRect.of(to, span.first, span.second), excludeId = itemId)
+    }
+
+    /**
+     * Section 35 (v0.4.1): moves [itemId] onto a brand-new page in one
+     * transaction — the previous UI-level pattern called [addPage] and
+     * [moveToPage] as two separate persisted mutations, so a [moveToPage]
+     * failure after a successful [addPage] left a committed empty page
+     * behind with the item still on its original page.
+     */
+    fun moveToNewPage(itemId: String): Boolean {
+        val item = workspace.items.find { it.id == itemId } ?: return false
+        val span = spanOf(item)
+        if (span.first > gridSpec.columns || span.second > gridSpec.rows) return false
+        if (workspace.pageCount >= MAX_AUTO_PAGES) return false
+        val newPageIndex = workspace.pageCount
+        val target = GridPosition(newPageIndex, 0, 0)
+        return mutate { ws ->
+            ws.copy(
+                pageCount = ws.pageCount + 1,
+                items = ws.items.map { if (it.id == itemId) withPosition(it, target) else it },
+            )
+        }
     }
 
     fun moveToPage(itemId: String, page: Int): Boolean {
@@ -137,6 +183,7 @@ class WorkspaceController(
 
     // --- widgets ---
 
+    /** Section 34 (v0.4.1): same one-mutate guarantee as [addApp] — see its doc comment. */
     fun addWidget(
         appWidgetId: Int,
         spanColumns: Int,
@@ -144,17 +191,27 @@ class WorkspaceController(
         providerComponent: String,
         position: GridPosition? = null,
     ): String? {
-        val target = position
-            ?: findFreeRectOrNewPage(spanColumns, spanRows)?.let { GridPosition(it.page, it.column, it.row) }
-            ?: return null
-        if (!isFree(GridRect.of(target, spanColumns, spanRows))) return null
-        val id = newId()
-        val ok = mutate {
-            it.copy(
-                items = it.items + WorkspaceItem.WidgetIcon(id, target, appWidgetId, spanColumns, spanRows, providerComponent),
-            )
+        fun commit(target: GridPosition, newPageCount: Int? = null): String? {
+            val id = newId()
+            val widget = WorkspaceItem.WidgetIcon(id, target, appWidgetId, spanColumns, spanRows, providerComponent)
+            val ok = mutate { ws ->
+                val base = if (newPageCount != null) ws.copy(pageCount = newPageCount) else ws
+                base.copy(items = base.items + widget)
+            }
+            return if (ok) id else null
         }
-        return if (ok) id else null
+
+        if (position != null) {
+            if (!isFree(GridRect.of(position, spanColumns, spanRows))) return null
+            return commit(position)
+        }
+        findFreeRect(spanColumns, spanRows)?.let { rect ->
+            return commit(GridPosition(rect.page, rect.column, rect.row))
+        }
+        if (spanColumns <= 0 || spanRows <= 0 || spanColumns > gridSpec.columns || spanRows > gridSpec.rows) return null
+        if (workspace.pageCount >= MAX_AUTO_PAGES) return null
+        val newPageIndex = workspace.pageCount
+        return commit(GridPosition(newPageIndex, 0, 0), newPageCount = workspace.pageCount + 1)
     }
 
     /** Validates the new rectangle (bounds + no overlap with any other item) before committing — section 20. */
@@ -290,27 +347,6 @@ class WorkspaceController(
     private fun findFreeCell(): GridPosition? {
         val rect = findFreeRect(1, 1) ?: return null
         return GridPosition(rect.page, rect.column, rect.row)
-    }
-
-    /** Section 16: if every existing page is full, add one more page and place there — rather than failing silently. */
-    private fun findFreeCellOrNewPage(): GridPosition? {
-        findFreeCell()?.let { return it }
-        val newPage = addPageIfUnderLimit() ?: return null
-        return GridPosition(newPage, 0, 0)
-    }
-
-    /** Section 49: same auto-page behavior for widgets, rejecting outright only if the span can never fit any page. */
-    private fun findFreeRectOrNewPage(spanColumns: Int, spanRows: Int): GridRect? {
-        if (spanColumns <= 0 || spanRows <= 0 || spanColumns > gridSpec.columns || spanRows > gridSpec.rows) return null
-        findFreeRect(spanColumns, spanRows)?.let { return it }
-        val newPage = addPageIfUnderLimit() ?: return null
-        return GridRect(newPage, 0, 0, spanColumns, spanRows)
-    }
-
-    private fun addPageIfUnderLimit(): Int? {
-        if (workspace.pageCount >= MAX_AUTO_PAGES) return null
-        val newPage = addPage()
-        return if (newPage >= 0) newPage else null
     }
 
     private fun findFreeRect(spanColumns: Int, spanRows: Int): GridRect? {

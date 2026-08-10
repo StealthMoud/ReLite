@@ -539,6 +539,71 @@ class WorkspaceControllerTest {
         assertNull(storage.read()) // nothing was ever durably written either
     }
 
+    @Test
+    fun `a failed save while auto-creating a page leaves pageCount unchanged`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage, TEST_SPEC)
+        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        // Fill every cell of the only page so the next addApp must auto-create a page.
+        for (row in 0 until TEST_SPEC.rows) {
+            for (column in 0 until TEST_SPEC.columns) {
+                assertNotNull(ctrl.addApp("io.relite.filler.$row.$column/Main", GridPosition(0, column, row)))
+            }
+        }
+        assertEquals(1, ctrl.current().pageCount)
+
+        storage.failWrites = true
+        val id = ctrl.addApp("io.relite.overflow/Main")
+
+        assertNull(id)
+        // Section 33: previously this left pageCount == 2 with no item on it.
+        assertEquals(1, ctrl.current().pageCount)
+    }
+
+    @Test
+    fun `a failed save while auto-creating a page for a widget leaves pageCount unchanged`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage, TEST_SPEC)
+        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        for (row in 0 until TEST_SPEC.rows) {
+            for (column in 0 until TEST_SPEC.columns) {
+                assertNotNull(ctrl.addApp("io.relite.filler.$row.$column/Main", GridPosition(0, column, row)))
+            }
+        }
+
+        storage.failWrites = true
+        val id = ctrl.addWidget(appWidgetId = 1, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
+
+        assertNull(id)
+        assertEquals(1, ctrl.current().pageCount)
+    }
+
+    // --- moveToNewPage (section 35) ---
+
+    @Test
+    fun `moveToNewPage adds a page and moves the item there in one transaction`() {
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+        assertTrue(controller.moveToNewPage(id))
+
+        assertEquals(2, controller.current().pageCount)
+        val item = controller.current().items.single { it.id == id }
+        assertEquals(GridPosition(1, 0, 0), item.position)
+    }
+
+    @Test
+    fun `a failed save during moveToNewPage leaves pageCount and position unchanged`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage, TEST_SPEC)
+        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        val id = ctrl.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+
+        storage.failWrites = true
+        assertFalse(ctrl.moveToNewPage(id))
+
+        assertEquals(1, ctrl.current().pageCount)
+        assertEquals(GridPosition(0, 0, 0), ctrl.current().items.single().position)
+    }
+
     private companion object {
         val TEST_SPEC = LauncherGridSpec(columns = 4, rows = 4, dockCapacity = 5)
     }
