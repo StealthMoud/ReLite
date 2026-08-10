@@ -509,10 +509,12 @@ class MainActivity : AppCompatActivity(), LauncherHost {
     }
 
     /**
-     * Section 80/119: one chip per page — tap jumps there, long-press offers
-     * "Set as default page" / "Remove this empty page", a trailing "+" chip
-     * adds a page. Real page thumbnails (rendered page content, not just a
-     * number) are not implemented this pass — see CHANGELOG's Known gaps.
+     * Section 7 (v0.5.0 completion pass): one chip per page — tap jumps
+     * there, long-press offers "Set as default page" / "Remove this empty
+     * page", a trailing "+" chip adds a page. Each chip is now a real,
+     * model-driven [EditModePageThumbnailView] of that page's actual item
+     * layout (see its kdoc) with a small page-number badge overlaid in the
+     * corner, rather than the previous plain numbered chip.
      */
     private fun rebuildEditModePageStrip() {
         editModePageStrip.removeAllViews()
@@ -521,14 +523,13 @@ class MainActivity : AppCompatActivity(), LauncherHost {
         val chipMargin = resources.getDimensionPixelSize(R.dimen.edit_mode_chip_margin)
 
         for (page in 0 until workspace.pageCount) {
-            val chip = android.widget.TextView(this).apply {
-                text = getString(R.string.edit_mode_page_number, page + 1)
-                gravity = android.view.Gravity.CENTER
-                setTextColor(resources.getColor(R.color.relite_text_primary, theme))
+            val pageItems = workspace.items.filter { it.position.page == page }
+            val chip = android.widget.FrameLayout(this).apply {
                 setBackgroundResource(if (page == workspace.defaultPage) R.drawable.bg_page_chip_default else R.drawable.bg_page_chip)
                 layoutParams = android.widget.LinearLayout.LayoutParams(chipSize, chipSize).apply {
                     marginEnd = chipMargin
                 }
+                contentDescription = getString(R.string.edit_mode_page_number, page + 1)
                 setOnClickListener {
                     pager.setCurrentItem(page, true)
                     exitEditMode()
@@ -538,6 +539,26 @@ class MainActivity : AppCompatActivity(), LauncherHost {
                     true
                 }
             }
+            val thumbnail = io.relite.home.ui.home.EditModePageThumbnailView(this).apply {
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                )
+                bind(pageItems, workspace.homeGrid)
+            }
+            val numberBadge = android.widget.TextView(this).apply {
+                text = getString(R.string.edit_mode_page_number, page + 1)
+                textSize = 10f
+                setTextColor(resources.getColor(R.color.relite_text_primary, theme))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                    android.view.Gravity.BOTTOM or android.view.Gravity.END,
+                ).apply { setMargins(0, 0, 6, 2) }
+            }
+            chip.addView(thumbnail)
+            chip.addView(numberBadge)
             editModePageStrip.addView(chip)
         }
 
