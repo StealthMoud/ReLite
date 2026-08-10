@@ -127,4 +127,36 @@ class AppSearchTest {
         assertEquals(listOf("Alpha App", "Bravo App"), first)
         assertEquals(first, second)
     }
+
+    // --- customOrder (sections 85-92, v0.5.0) ---
+
+    @Test
+    fun `customOrder places apps by their stored order`() {
+        val order = listOf(webcam.componentKey, calculator.componentKey, camera.componentKey, settings.componentKey)
+        assertEquals(
+            listOf("WebcamViewer", "Calculator", "Camera", "Settings"),
+            AppSearch.customOrder(apps, order).map { it.label },
+        )
+    }
+
+    @Test
+    fun `customOrder appends a newly installed app not yet in the stored order, alphabetically at the end`() {
+        val order = listOf(camera.componentKey, calculator.componentKey)
+        // settings and webcam are installed but never in `order`.
+        assertEquals(
+            listOf("Camera", "Calculator", "Settings", "WebcamViewer"),
+            AppSearch.customOrder(apps, order).map { it.label },
+        )
+    }
+
+    @Test
+    fun `customOrder drops a stored key for an app that's no longer installed`() {
+        val order = listOf("io.relite.gone/Main", camera.componentKey)
+        assertEquals(listOf("Camera"), AppSearch.customOrder(listOf(camera), order).map { it.label })
+    }
+
+    @Test
+    fun `customOrder with an empty stored order is fully alphabetical`() {
+        assertEquals(AppSearch.alphabetical(apps), AppSearch.customOrder(apps, emptyList()))
+    }
 }

@@ -5,11 +5,24 @@
     android:orientation="vertical"
     android:background="@color/relite_background">
 
+    <!-- Section 88 (v0.5.0): the Apps screen search bar moved to the bottom
+         in current One UI, explicitly for one-handed reach — see
+         docs/design/one-ui-current-reference.md. -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/drawer_recycler"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingHorizontal="@dimen/grid_cell_padding" />
+
     <LinearLayout
+        android:id="@+id/drawer_search_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="16dp"
-        android:layout_marginBottom="12dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="16dp"
         android:background="@drawable/bg_dock"
         android:gravity="center_vertical"
         android:orientation="horizontal"
@@ -32,14 +45,14 @@
             android:inputType="text"
             android:imeOptions="actionSearch"
             android:maxLines="1" />
-    </LinearLayout>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/drawer_recycler"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingHorizontal="@dimen/grid_cell_padding" />
+        <ImageButton
+            android:id="@+id/drawer_more"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_more"
+            android:contentDescription="@string/action_more" />
+    </LinearLayout>
 
 </LinearLayout>

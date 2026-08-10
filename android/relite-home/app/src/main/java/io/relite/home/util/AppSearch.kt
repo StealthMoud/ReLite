@@ -27,6 +27,21 @@ object AppSearch {
     fun alphabetical(apps: List<AppEntry>): List<AppEntry> =
         apps.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
 
+    /**
+     * Section 85-92 (v0.5.0): the Apps screen's Custom order — every
+     * component key in [order] that's still installed, in that sequence,
+     * followed by any newly-installed app not yet in the stored order
+     * (alphabetically, appended at the end) rather than dropping it from
+     * the list entirely.
+     */
+    fun customOrder(apps: List<AppEntry>, order: List<String>): List<AppEntry> {
+        val byKey = apps.associateBy { it.componentKey }
+        val ordered = order.mapNotNull { byKey[it] }
+        val orderedKeys = ordered.map { it.componentKey }.toSet()
+        val remainder = alphabetical(apps.filterNot { it.componentKey in orderedKeys })
+        return ordered + remainder
+    }
+
     fun search(apps: List<AppEntry>, query: String): List<AppEntry> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return alphabetical(apps)

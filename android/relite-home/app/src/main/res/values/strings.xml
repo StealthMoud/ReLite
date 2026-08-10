@@ -24,6 +24,10 @@
     <string name="cancel">Cancel</string>
     <string name="workspace_full">No free space on the home screen</string>
     <string name="app_launch_failed">Couldn\'t open this app — removed from Home</string>
+    <string name="action_more">More</string>
+    <string name="action_sort">Sort</string>
+    <string name="sort_custom_order">Custom order</string>
+    <string name="sort_alphabetical_order">Alphabetical order</string>
     <string name="action_move_to_page">Move to page…</string>
     <string name="new_page_option">New page</string>
     <string name="page_label">Page %1$d</string>
