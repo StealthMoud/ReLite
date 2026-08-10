@@ -144,9 +144,11 @@ completion pass on the same milestone; see the dated bullets above.
   folder view are now implemented (real member icons, direct launch,
   Enlarge/Shrink context-menu actions) and covered by live instrumentation
   (`HomeDragToFolderInstrumentationTest`, `ExpandedFolderInstrumentationTest`).
-  Still missing: **Apps-screen-Custom-mode folders** — the Apps drawer's
-  Custom order still only reorders individual apps; there is no
-  drawer-native folder concept distinct from a Home folder.
+  ~~Still missing: **Apps-screen-Custom-mode folders**~~ — implemented:
+  a `DrawerFolder` (persisted in `AppsPreference`, no relation to a Home
+  `WorkspaceItem.FolderIcon`) occupying a slot in Custom order, created
+  via a menu-driven "Add to Apps folder" flow (not drag — Custom order's
+  own long-press already starts a reorder drag with no merge detection).
 - **Widgets**: no debug test widget fixture, no picker preview
   cards/grouping, no drag/edit-mode resize handles (still +/- buttons), no
   portable widget descriptor/rebind-on-import flow — export still drops
