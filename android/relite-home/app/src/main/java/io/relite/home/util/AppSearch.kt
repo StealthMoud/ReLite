@@ -1,6 +1,8 @@
 package io.relite.home.util
 
 import io.relite.home.data.AppEntry
+import io.relite.home.data.DrawerFolder
+import io.relite.home.data.DrawerItem
 import java.util.Locale
 
 /**
@@ -39,6 +41,33 @@ object AppSearch {
         val ordered = order.mapNotNull { byKey[it] }
         val orderedKeys = ordered.map { it.componentKey }.toSet()
         val remainder = alphabetical(apps.filterNot { it.componentKey in orderedKeys })
+        return ordered + remainder
+    }
+
+    /**
+     * Section 6 (v0.5.0 completion pass): same slot-filling logic as
+     * [customOrder], but folder slots (see [AppsPreference.FOLDER_SLOT_PREFIX])
+     * become a [DrawerItem.FolderItem] instead of being silently dropped, and
+     * every app already claimed by a folder is excluded from both the
+     * ordered and the alphabetical-remainder passes — it's only reachable
+     * by opening that folder, never as a second top-level tile.
+     */
+    fun customOrderItems(apps: List<AppEntry>, order: List<String>, folders: List<DrawerFolder>): List<DrawerItem> {
+        val byKey = apps.associateBy { it.componentKey }
+        val foldersById = folders.associateBy { it.id }
+        val claimedByFolders = folders.flatMap { it.memberComponentKeys }.toSet()
+
+        val ordered = order.mapNotNull { slot ->
+            if (slot.startsWith(AppsPreference.FOLDER_SLOT_PREFIX)) {
+                foldersById[slot.removePrefix(AppsPreference.FOLDER_SLOT_PREFIX)]?.let { DrawerItem.FolderItem(it) }
+            } else {
+                byKey[slot]?.takeIf { it.componentKey !in claimedByFolders }?.let { DrawerItem.AppItem(it) }
+            }
+        }
+        val orderedAppKeys = ordered.filterIsInstance<DrawerItem.AppItem>().map { it.entry.componentKey }.toSet()
+        val remainder = alphabetical(
+            apps.filterNot { it.componentKey in orderedAppKeys || it.componentKey in claimedByFolders },
+        ).map { DrawerItem.AppItem(it) }
         return ordered + remainder
     }
 

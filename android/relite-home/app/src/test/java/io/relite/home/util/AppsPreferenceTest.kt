@@ -1,9 +1,30 @@
 package io.relite.home.util
 
+import io.relite.home.data.DrawerFolder
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AppsPreferenceTest {
+
+    @Test
+    fun `no stored folders decodes to empty`() {
+        assertEquals(emptyList<DrawerFolder>(), AppsPreference.decodeFolders(null))
+        assertEquals(emptyList<DrawerFolder>(), AppsPreference.decodeFolders(""))
+    }
+
+    @Test
+    fun `folders round-trip through encode and decode`() {
+        val folders = listOf(
+            DrawerFolder("f1", "Media", listOf("io.relite.camera/Main", "io.relite.gallery/Main")),
+            DrawerFolder("f2", "Empty", emptyList()),
+        )
+        assertEquals(folders, AppsPreference.decodeFolders(AppsPreference.encodeFolders(folders)))
+    }
+
+    @Test
+    fun `malformed stored folders JSON fails safe to empty instead of throwing`() {
+        assertEquals(emptyList<DrawerFolder>(), AppsPreference.decodeFolders("not json at all"))
+    }
 
     @Test
     fun `no stored sort mode defaults to custom`() {

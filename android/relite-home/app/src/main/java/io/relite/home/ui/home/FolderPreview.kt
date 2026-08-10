@@ -7,7 +7,6 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import androidx.core.content.ContextCompat
 import io.relite.home.R
-import io.relite.home.data.WorkspaceItem
 import io.relite.home.util.IconCache
 
 /**
@@ -18,10 +17,13 @@ import io.relite.home.util.IconCache
  * page rebind (this launcher already rebuilds all cell views on every
  * workspace change, see HomePagerAdapter) without needing its own
  * invalidation tracking; an empty folder falls back to the plain themed
- * background with no member tiles.
+ * background with no member tiles. Takes a plain component-key list rather
+ * than [io.relite.home.data.WorkspaceItem.FolderIcon] directly — reused by
+ * the Apps-screen's own [io.relite.home.data.DrawerFolder], which has no
+ * relationship to the Home workspace's data model.
  */
 object FolderPreview {
-    fun render(context: Context, iconCache: IconCache, folder: WorkspaceItem.FolderIcon, sizePx: Int): Drawable {
+    fun render(context: Context, iconCache: IconCache, memberComponentKeys: List<String>, sizePx: Int): Drawable {
         val background = ContextCompat.getDrawable(context, R.drawable.bg_folder)?.mutate()
         val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -30,7 +32,7 @@ object FolderPreview {
 
         val cell = sizePx / 2
         val padding = (cell * 0.14f).toInt()
-        folder.itemComponentKeys.take(4).forEachIndexed { index, componentKey ->
+        memberComponentKeys.take(4).forEachIndexed { index, componentKey ->
             val parts = componentKey.split("/", limit = 2)
             if (parts.size != 2) return@forEachIndexed
             val icon = iconCache.get(parts[0], parts[1], sizePx) ?: return@forEachIndexed

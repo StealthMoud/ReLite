@@ -1,7 +1,10 @@
 package io.relite.home.util
 
 import io.relite.home.data.AppEntry
+import io.relite.home.data.DrawerFolder
+import io.relite.home.data.DrawerItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppSearchTest {
@@ -158,5 +161,51 @@ class AppSearchTest {
     @Test
     fun `customOrder with an empty stored order is fully alphabetical`() {
         assertEquals(AppSearch.alphabetical(apps), AppSearch.customOrder(apps, emptyList()))
+    }
+
+    @Test
+    fun `customOrderItems renders a folder slot as a FolderItem in place, not its members`() {
+        val folder = DrawerFolder("f1", "Media", listOf(camera.componentKey, webcam.componentKey))
+        val order = listOf(settings.componentKey, AppsPreference.FOLDER_SLOT_PREFIX + "f1", calculator.componentKey)
+        val items = AppSearch.customOrderItems(apps, order, listOf(folder))
+
+        assertEquals(
+            listOf(
+                DrawerItem.AppItem(settings),
+                DrawerItem.FolderItem(folder),
+                DrawerItem.AppItem(calculator),
+            ),
+            items,
+        )
+    }
+
+    @Test
+    fun `customOrderItems excludes an app claimed by a folder from the top-level list even when the order still names it`() {
+        val folder = DrawerFolder("f1", "Media", listOf(camera.componentKey))
+        // Stale order entry for `camera` (e.g. left over from before it joined the folder) must not resurrect it as a second tile.
+        val order = listOf(camera.componentKey, AppsPreference.FOLDER_SLOT_PREFIX + "f1")
+        val items = AppSearch.customOrderItems(apps, order, listOf(folder))
+
+        assertEquals(1, items.count { it == DrawerItem.FolderItem(folder) })
+        assertTrue(items.none { it is DrawerItem.AppItem && it.entry == camera })
+    }
+
+    @Test
+    fun `customOrderItems appends apps not yet in the stored order alphabetically, excluding folder members`() {
+        val folder = DrawerFolder("f1", "Media", listOf(camera.componentKey))
+        val items = AppSearch.customOrderItems(apps, emptyList(), listOf(folder))
+
+        assertEquals(
+            listOf("Calculator", "Settings", "WebcamViewer"), // Camera excluded (folder member)
+            items.filterIsInstance<DrawerItem.AppItem>().map { it.entry.label },
+        )
+    }
+
+    @Test
+    fun `customOrderItems drops a folder slot whose folder id no longer exists`() {
+        val order = listOf(settings.componentKey, AppsPreference.FOLDER_SLOT_PREFIX + "gone")
+        val items = AppSearch.customOrderItems(apps, order, emptyList())
+
+        assertTrue(items.none { it is DrawerItem.FolderItem })
     }
 }

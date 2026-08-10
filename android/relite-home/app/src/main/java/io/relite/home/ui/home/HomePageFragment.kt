@@ -242,7 +242,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             app.iconCache.get(pkg, activity, resolvedIconSizePx())
         }
         is WorkspaceItem.FolderIcon -> {
-            FolderPreview.render(requireContext(), app.iconCache, item, resolvedIconSizePx())
+            FolderPreview.render(requireContext(), app.iconCache, item.itemComponentKeys, resolvedIconSizePx())
         }
         is WorkspaceItem.WidgetIcon -> null
     }

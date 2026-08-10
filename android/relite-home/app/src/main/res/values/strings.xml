@@ -13,6 +13,8 @@
     <string name="action_delete_folder">Delete</string>
     <string name="action_add_apps">Add apps</string>
     <string name="action_add_to_folder">Add to Folder</string>
+    <string name="action_add_to_apps_folder">Add to Apps folder</string>
+    <string name="action_open_folder">Open folder</string>
     <string name="action_remove_from_folder">Remove from folder</string>
     <string name="action_move_left">Move left</string>
     <string name="action_move_right">Move right</string>

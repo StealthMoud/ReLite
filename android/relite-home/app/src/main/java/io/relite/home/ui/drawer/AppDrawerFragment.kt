@@ -23,6 +23,7 @@ import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
 import io.relite.home.data.AppEntry
 import io.relite.home.data.AppRepository
+import io.relite.home.data.DrawerFolder
 import io.relite.home.ui.settings.HomeSettingsActivity
 import io.relite.home.util.AppSearch
 import io.relite.home.util.AppsPreference
@@ -34,10 +35,11 @@ import io.relite.home.util.AppsSortMode
  */
 class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
 
-    private lateinit var adapter: AppDrawerAdapter
+    private lateinit var adapter: DrawerGridAdapter
     private lateinit var recycler: RecyclerView
     private lateinit var dragHelper: ItemTouchHelper
     private var allApps: List<AppEntry> = emptyList()
+    private var folders: List<DrawerFolder> = emptyList()
     private var appsChangedSubscription: AppRepository.Subscription? = null
     private var sortMode: AppsSortMode = AppsSortMode.CUSTOM
 
@@ -52,7 +54,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         val app = requireActivity().application as ReliteHomeApplication
         sortMode = AppsPreference.getSortMode(requireContext())
 
-        adapter = AppDrawerAdapter(
+        adapter = DrawerGridAdapter(
             iconCache = app.iconCache,
             iconSizePx = io.relite.home.util.IconSizePreference.resolvePx(requireContext(), resources.getDimensionPixelSize(R.dimen.icon_size)),
             onAppClick = { host.launchComponent(it.componentKey) },
@@ -69,6 +71,10 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
                     true
                 }
             },
+            onFolderClick = { folder ->
+                DrawerFolderSheetDialog.show(requireActivity().supportFragmentManager, folder.id) { refreshAppsAndFolders(app) }
+            },
+            onFolderLongClick = { folder, anchor -> showFolderMenu(app, folder, anchor); true },
         )
 
         recycler = view.findViewById(R.id.drawer_recycler)
@@ -93,10 +99,11 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
 
             override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
                 super.clearView(recyclerView, viewHolder)
-                // Section 92: persist the settled order once the drag ends,
+                // Section 92/6: persist the settled order once the drag ends,
                 // not on every intermediate onMove — a real device can fire
-                // many onMove calls per gesture.
-                AppsPreference.setCustomOrder(requireContext(), adapter.currentList.map { it.componentKey })
+                // many onMove calls per gesture. A folder tile persists as
+                // its "folder:<id>" slot marker, not its member keys.
+                AppsPreference.setCustomOrder(requireContext(), adapter.currentList.map(::slotOf))
             }
         })
 
@@ -133,11 +140,11 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         }
 
         allApps = app.appRepository.loadAll()
+        folders = AppsPreference.getFolders(requireContext())
         adapter.submitList(applyCurrentQuery())
 
         appsChangedSubscription = app.appRepository.onAppsChanged {
-            allApps = app.appRepository.loadAll()
-            adapter.submitList(applyCurrentQuery())
+            refreshAppsAndFolders(app)
         }
 
         val searchField = view.findViewById<EditText>(R.id.drawer_search)
@@ -155,6 +162,18 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     }
 
     private var currentQuery: String = ""
+
+    /** Re-reads both apps and folders and re-binds — the folder editor and picker mutate [AppsPreference] directly. */
+    private fun refreshAppsAndFolders(app: ReliteHomeApplication) {
+        allApps = app.appRepository.loadAll()
+        folders = AppsPreference.getFolders(requireContext())
+        adapter.submitList(applyCurrentQuery())
+    }
+
+    private fun slotOf(item: io.relite.home.data.DrawerItem): String = when (item) {
+        is io.relite.home.data.DrawerItem.AppItem -> item.entry.componentKey
+        is io.relite.home.data.DrawerItem.FolderItem -> AppsPreference.FOLDER_SLOT_PREFIX + item.folder.id
+    }
 
     override fun onDestroyView() {
         super.onDestroyView()
@@ -189,11 +208,22 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         return lm.orientation == RecyclerView.HORIZONTAL || !recycler.canScrollVertically(-1)
     }
 
-    private fun applyCurrentQuery(): List<AppEntry> {
-        if (currentQuery.isNotEmpty()) return AppSearch.search(allApps, currentQuery)
+    /**
+     * Section 6 (v0.5.0 completion pass): folders only ever appear in the
+     * Custom-order grid with no active search — Alphabetical order and
+     * search results are always a flat list of individual apps (a folder's
+     * members included), matching how search/alphabetical already ignore
+     * Custom order's own sequence.
+     */
+    private fun applyCurrentQuery(): List<io.relite.home.data.DrawerItem> {
+        if (currentQuery.isNotEmpty()) {
+            return AppSearch.search(allApps, currentQuery).map { io.relite.home.data.DrawerItem.AppItem(it) }
+        }
         return when (sortMode) {
-            AppsSortMode.ALPHABETICAL -> AppSearch.alphabetical(allApps)
-            AppsSortMode.CUSTOM -> AppSearch.customOrder(allApps, AppsPreference.getCustomOrder(requireContext()))
+            AppsSortMode.ALPHABETICAL ->
+                AppSearch.alphabetical(allApps).map { io.relite.home.data.DrawerItem.AppItem(it) }
+            AppsSortMode.CUSTOM ->
+                AppSearch.customOrderItems(allApps, AppsPreference.getCustomOrder(requireContext()), folders)
         }
     }
 
@@ -238,6 +268,14 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
             io.relite.home.ui.menu.LauncherAction(MENU_ID_ADD_TO_HOME, getString(R.string.action_add_to_home)),
             io.relite.home.ui.menu.LauncherAction(MENU_ID_PIN_TO_DOCK, getString(R.string.action_pin_to_dock)),
             io.relite.home.ui.menu.LauncherAction(MENU_ID_ADD_TO_FOLDER, getString(R.string.action_add_to_folder)),
+            // Section 6 (v0.5.0 completion pass): reachable from Alphabetical
+            // order/search rather than Custom order, since Custom order's
+            // long-press already starts a reorder drag (see onAppLongClick
+            // above) — a real, non-drag alternative to drag-app-onto-app
+            // merge, consistent with every other drag affordance in this
+            // launcher. The resulting folder shows up the next time Custom
+            // order is viewed.
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_ADD_TO_APPS_FOLDER, getString(R.string.action_add_to_apps_folder)),
             io.relite.home.ui.menu.LauncherAction(MENU_ID_APP_INFO, getString(R.string.action_app_info)),
         )
         io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
@@ -263,6 +301,9 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
                         entry.componentKey,
                     ) { host.workspaceChanged() }
                 }
+                MENU_ID_ADD_TO_APPS_FOLDER -> {
+                    DrawerFolderPicker.show(requireContext(), entry.componentKey) { refreshAppsAndFolders(app) }
+                }
                 MENU_ID_APP_INFO -> openAppInfo(entry.packageName)
             }
         }
@@ -273,10 +314,36 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         startActivity(intent)
     }
 
+    /** Section 6 (v0.5.0 completion pass): a Custom-grid folder tile's own long-press menu — rename/add/delete via [DrawerFolderSheetDialog], or a quick delete right from here. */
+    private fun showFolderMenu(app: ReliteHomeApplication, folder: DrawerFolder, anchor: View) {
+        val actions = listOf(
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_OPEN_APPS_FOLDER, getString(R.string.action_open_folder)),
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_DELETE_APPS_FOLDER, getString(R.string.action_delete_folder)),
+        )
+        io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
+            when (actionId) {
+                MENU_ID_OPEN_APPS_FOLDER ->
+                    DrawerFolderSheetDialog.show(requireActivity().supportFragmentManager, folder.id) { refreshAppsAndFolders(app) }
+                MENU_ID_DELETE_APPS_FOLDER -> {
+                    val remaining = AppsPreference.getFolders(requireContext()).filterNot { it.id == folder.id }
+                    AppsPreference.setFolders(requireContext(), remaining)
+                    val order = AppsPreference.getCustomOrder(requireContext())
+                        .filterNot { it == AppsPreference.FOLDER_SLOT_PREFIX + folder.id }
+                    val toAppend = folder.memberComponentKeys.filterNot { it in order }
+                    AppsPreference.setCustomOrder(requireContext(), order + toAppend)
+                    refreshAppsAndFolders(app)
+                }
+            }
+        }
+    }
+
     companion object {
         private const val MENU_ID_ADD_TO_HOME = 1
         private const val MENU_ID_APP_INFO = 2
         private const val MENU_ID_PIN_TO_DOCK = 3
         private const val MENU_ID_ADD_TO_FOLDER = 4
+        private const val MENU_ID_ADD_TO_APPS_FOLDER = 5
+        private const val MENU_ID_OPEN_APPS_FOLDER = 6
+        private const val MENU_ID_DELETE_APPS_FOLDER = 7
     }
 }
