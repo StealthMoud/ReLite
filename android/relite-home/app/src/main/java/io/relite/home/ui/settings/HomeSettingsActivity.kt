@@ -21,6 +21,8 @@ import io.relite.home.data.WorkspaceRepository
 import io.relite.home.util.AppsPreference
 import io.relite.home.util.AppsSortMode
 import io.relite.home.util.HomePreference
+import io.relite.home.util.IconSize
+import io.relite.home.util.IconSizePreference
 import io.relite.home.util.ThemeMode
 import io.relite.home.util.ThemePreference
 
@@ -64,7 +66,39 @@ class HomeSettingsActivity : AppCompatActivity() {
 
         setUpThemePicker()
         setUpHomeGridPicker()
+        setUpIconSizePicker()
         setUpToggles()
+    }
+
+    /** Section 10-13 (v0.5.0 completion pass): same tappable-card pattern as the Home grid picker. */
+    private fun setUpIconSizePicker() {
+        val cards = mapOf(
+            IconSize.SMALL to findViewById<TextView>(R.id.settings_icon_size_small),
+            IconSize.DEFAULT to findViewById<TextView>(R.id.settings_icon_size_default),
+            IconSize.LARGE to findViewById<TextView>(R.id.settings_icon_size_large),
+        )
+
+        fun refresh() {
+            val current = IconSizePreference.get(this)
+            cards.forEach { (size, card) ->
+                card.setBackgroundResource(if (size == current) R.drawable.bg_dock_selected else R.drawable.bg_dock)
+            }
+        }
+        refresh()
+
+        cards.forEach { (size, card) ->
+            card.setOnClickListener {
+                IconSizePreference.set(this, size)
+                // Section 12 (v0.5.0 completion pass): every rendered pixel
+                // size is now a distinct cache key (see IconCache's kdoc) —
+                // a full clear isn't required for correctness, but it keeps
+                // the now-unused previous size's bitmaps from sitting in the
+                // byte budget until something else evicts them.
+                app.iconCache.clear()
+                refresh()
+                Toast.makeText(this, R.string.settings_icon_size_changed, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     /** Section 55-57/123 (v0.5.0): tappable grid-size cards, reflecting and driving the real persisted Home grid. */

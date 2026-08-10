@@ -14,6 +14,7 @@ import io.relite.home.util.IconCache
 
 class AppDrawerAdapter(
     private val iconCache: IconCache,
+    private val iconSizePx: Int,
     private val onAppClick: (AppEntry) -> Unit,
     // Section 92 (v0.5.0): long-press is overloaded between "open the item
     // action menu" and "start a Custom-order drag" — the caller decides
@@ -30,7 +31,7 @@ class AppDrawerAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val app = getItem(position)
         holder.label.text = app.label
-        holder.icon.setImageDrawable(iconCache.get(app.packageName, app.activityName))
+        holder.icon.setImageDrawable(iconCache.get(app.packageName, app.activityName, iconSizePx))
         holder.itemView.setOnClickListener { onAppClick(app) }
         holder.itemView.setOnLongClickListener { onAppLongClick(app, it) }
     }

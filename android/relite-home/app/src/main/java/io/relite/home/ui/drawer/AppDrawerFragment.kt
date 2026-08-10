@@ -54,6 +54,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
 
         adapter = AppDrawerAdapter(
             iconCache = app.iconCache,
+            iconSizePx = io.relite.home.util.IconSizePreference.resolvePx(requireContext(), resources.getDimensionPixelSize(R.dimen.icon_size)),
             onAppClick = { host.launchComponent(it.componentKey) },
             // Section 92 (v0.5.0): in Custom order, long-press starts a
             // drag instead of opening the action menu — Alphabetical order

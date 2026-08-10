@@ -51,11 +51,12 @@ class WorkspaceDockView @JvmOverloads constructor(
         this.componentKeys = componentKeys
         removeAllViews()
         val inflater = LayoutInflater.from(context)
+        val iconSizePx = io.relite.home.util.IconSizePreference.resolvePx(context, resources.getDimensionPixelSize(R.dimen.icon_size))
 
         for (key in componentKeys) {
             val app = allApps[key] ?: continue
             val button = inflater.inflate(R.layout.item_dock_icon, this, false) as ImageButton
-            button.setImageDrawable(iconCache.get(app.packageName, app.activityName))
+            button.setImageDrawable(iconCache.get(app.packageName, app.activityName, iconSizePx))
             button.contentDescription = app.label
             button.setOnClickListener { onAppClick(app) }
             wireDockInteractions(button, key, onRemoveFromDock, onAppInfo, onReorder, onAddToHome)

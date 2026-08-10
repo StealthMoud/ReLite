@@ -45,6 +45,7 @@ class FolderSheetDialog : DialogFragment() {
 
         adapter = AppDrawerAdapter(
             iconCache = app.iconCache,
+            iconSizePx = io.relite.home.util.IconSizePreference.resolvePx(requireContext(), resources.getDimensionPixelSize(R.dimen.icon_size)),
             onAppClick = { host.launchComponent(it.componentKey); dismiss() },
             onAppLongClick = { entry, anchor -> showMemberMenu(entry, anchor); true },
         )
@@ -166,6 +167,7 @@ class FolderSheetDialog : DialogFragment() {
         lateinit var dialog: AlertDialog
         val pickerAdapter = AppDrawerAdapter(
             iconCache = app.iconCache,
+            iconSizePx = io.relite.home.util.IconSizePreference.resolvePx(requireContext(), resources.getDimensionPixelSize(R.dimen.icon_size)),
             onAppClick = { entry ->
                 app.workspaceController.addAppToFolder(folderId, entry.componentKey)
                 host.workspaceChanged()

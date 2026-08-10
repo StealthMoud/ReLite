@@ -99,8 +99,7 @@ class ReliteHomeApplication : Application() {
         workspaceController = WorkspaceController(workspaceRepository, DOCK_CAPACITY)
 
         val launcherApps = getSystemService(LauncherApps::class.java)
-        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
-        iconCache = IconCache(launcherApps, iconSizePx)
+        iconCache = IconCache(launcherApps)
 
         appWidgetHost = ReliteAppWidgetHost(this)
 

@@ -33,7 +33,7 @@ object FolderPreview {
         folder.itemComponentKeys.take(4).forEachIndexed { index, componentKey ->
             val parts = componentKey.split("/", limit = 2)
             if (parts.size != 2) return@forEachIndexed
-            val icon = iconCache.get(parts[0], parts[1]) ?: return@forEachIndexed
+            val icon = iconCache.get(parts[0], parts[1], sizePx) ?: return@forEachIndexed
             val column = index % 2
             val row = index / 2
             icon.setBounds(

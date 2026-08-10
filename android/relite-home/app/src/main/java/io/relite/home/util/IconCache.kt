@@ -3,7 +3,6 @@ package io.relite.home.util
 import android.content.ComponentName
 import android.content.pm.LauncherApps
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Process
@@ -18,20 +17,27 @@ import android.os.Process
  * even a few dozen of them pushed ReLite Home's Native Heap to ~136 MB
  * (`dumpsys meminfo io.relite.home`), roughly 2x the stock launcher's
  * total PSS. Rendering each icon once into a bitmap sized to what's
- * actually displayed (`iconSizePx`), and bounding the cache by real byte
- * size, is what "cache app icons responsibly" (master plan section 20)
- * has to mean in practice, not just "put a number on the LruCache".
+ * actually displayed, normalized via [IconNormalizer], and bounding the
+ * cache by real byte size, is what "cache app icons responsibly" (master
+ * plan section 20) has to mean in practice, not just "put a number on the
+ * LruCache".
+ *
+ * Section 9 (v0.5.0 completion pass): [get] takes the pixel size per call
+ * rather than a single value fixed at construction, so the Home Settings
+ * icon-size preference can change at runtime without recreating this
+ * process-wide singleton. The cache key includes the size, so switching
+ * sizes doesn't invalidate anything — the previous size's entries simply
+ * age out of the byte budget like any other unused entry.
  */
 class IconCache(
     private val launcherApps: LauncherApps,
-    private val iconSizePx: Int,
     maxBytes: Int = DEFAULT_MAX_BYTES,
 ) {
 
     private val cache = BoundedByteCache<String, Bitmap>(maxBytes) { it.byteCount }
 
-    fun get(packageName: String, activityName: String): Drawable? {
-        val key = "$packageName/$activityName"
+    fun get(packageName: String, activityName: String, sizePx: Int): Drawable? {
+        val key = "$packageName/$activityName@$sizePx"
         cache.get(key)?.let { return BitmapDrawable(null, it) }
 
         val component = ComponentName(packageName, activityName)
@@ -40,18 +46,9 @@ class IconCache(
             .firstOrNull { it.componentName == component }
             ?: return null
 
-        val bitmap = renderToBitmap(info.getIcon(0)) ?: return null
+        val bitmap = IconNormalizer.renderToBitmap(info.getIcon(0), sizePx) ?: return null
         cache.put(key, bitmap)
         return BitmapDrawable(null, bitmap)
-    }
-
-    private fun renderToBitmap(source: Drawable): Bitmap? {
-        if (iconSizePx <= 0) return null
-        val bitmap = Bitmap.createBitmap(iconSizePx, iconSizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        source.setBounds(0, 0, iconSizePx, iconSizePx)
-        source.draw(canvas)
-        return bitmap
     }
 
     fun invalidate(packageName: String) {

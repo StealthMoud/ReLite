@@ -173,14 +173,16 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         }
     }
 
+    private fun resolvedIconSizePx(): Int =
+        io.relite.home.util.IconSizePreference.resolvePx(requireContext(), resources.getDimensionPixelSize(R.dimen.icon_size))
+
     private fun iconFor(app: ReliteHomeApplication, item: WorkspaceItem) = when (item) {
         is WorkspaceItem.AppIcon -> {
             val (pkg, activity) = item.componentKey.split("/", limit = 2)
-            app.iconCache.get(pkg, activity)
+            app.iconCache.get(pkg, activity, resolvedIconSizePx())
         }
         is WorkspaceItem.FolderIcon -> {
-            val sizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
-            FolderPreview.render(requireContext(), app.iconCache, item, sizePx)
+            FolderPreview.render(requireContext(), app.iconCache, item, resolvedIconSizePx())
         }
         is WorkspaceItem.WidgetIcon -> null
     }
