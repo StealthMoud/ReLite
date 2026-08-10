@@ -3,13 +3,11 @@ package io.relite.home.ui.home
 import android.content.Context
 import android.util.AttributeSet
 import android.view.LayoutInflater
-import android.view.Menu
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import io.relite.home.R
 import io.relite.home.data.AppEntry
 import io.relite.home.util.IconCache
@@ -180,28 +178,18 @@ class WorkspaceDockView @JvmOverloads constructor(
         onAppInfo: (String) -> Unit,
         onAddToHome: (String) -> Unit,
     ) {
-        PopupMenu(context, anchor).apply {
-            menu.add(Menu.NONE, MENU_ID_ADD_TO_HOME, Menu.NONE, R.string.action_add_to_home)
-            menu.add(Menu.NONE, MENU_ID_REMOVE_FROM_DOCK, Menu.NONE, R.string.action_remove_from_dock)
-            menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
-            setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    MENU_ID_ADD_TO_HOME -> {
-                        onAddToHome(componentKey)
-                        true
-                    }
-                    MENU_ID_REMOVE_FROM_DOCK -> {
-                        onRemoveFromDock(componentKey)
-                        true
-                    }
-                    MENU_ID_APP_INFO -> {
-                        onAppInfo(componentKey.substringBefore("/"))
-                        true
-                    }
-                    else -> false
-                }
+        val actions = listOf(
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_ADD_TO_HOME, context.getString(R.string.action_add_to_home)),
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_REMOVE_FROM_DOCK, context.getString(R.string.action_remove_from_dock)),
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_APP_INFO, context.getString(R.string.action_app_info)),
+        )
+        io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
+            when (actionId) {
+                MENU_ID_ADD_TO_HOME -> onAddToHome(componentKey)
+                MENU_ID_REMOVE_FROM_DOCK -> onRemoveFromDock(componentKey)
+                MENU_ID_APP_INFO -> onAppInfo(componentKey.substringBefore("/"))
             }
-        }.show()
+        }
     }
 
     companion object {

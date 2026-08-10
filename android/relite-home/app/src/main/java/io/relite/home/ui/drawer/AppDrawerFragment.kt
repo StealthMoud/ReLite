@@ -7,10 +7,8 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.Menu
 import android.view.View
 import android.widget.EditText
-import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -216,49 +214,38 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
      * manager (section 25).
      */
     private fun showLongPressMenu(app: ReliteHomeApplication, entry: AppEntry, anchor: View) {
-        PopupMenu(requireContext(), anchor).apply {
-            menu.add(Menu.NONE, MENU_ID_ADD_TO_HOME, Menu.NONE, R.string.action_add_to_home)
-            menu.add(Menu.NONE, MENU_ID_PIN_TO_DOCK, Menu.NONE, R.string.action_pin_to_dock)
-            menu.add(Menu.NONE, MENU_ID_ADD_TO_FOLDER, Menu.NONE, R.string.action_add_to_folder)
-            menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
-            setOnMenuItemClickListener { item ->
-                // Section 86: switch on the stable item id assigned above,
-                // never on displayed title text — localization or two
-                // menu entries sharing a label could otherwise pick the
-                // wrong branch.
-                when (item.itemId) {
-                    MENU_ID_ADD_TO_HOME -> {
-                        app.workspaceController.addApp(entry.componentKey)
-                        onWorkspaceChanged?.invoke()
-                        true
-                    }
-                    MENU_ID_PIN_TO_DOCK -> {
-                        // Section 28: pinning leaves any existing home shortcut for the
-                        // same app untouched — home and dock are independent surfaces.
-                        val pinned = app.workspaceController.addToDock(entry.componentKey)
-                        if (!pinned) {
-                            Toast.makeText(requireContext(), R.string.dock_full, Toast.LENGTH_SHORT).show()
-                        } else {
-                            onWorkspaceChanged?.invoke()
-                        }
-                        true
-                    }
-                    MENU_ID_ADD_TO_FOLDER -> {
-                        io.relite.home.ui.folder.FolderPicker.show(
-                            requireContext(),
-                            app.workspaceController,
-                            entry.componentKey,
-                        ) { onWorkspaceChanged?.invoke() }
-                        true
-                    }
-                    MENU_ID_APP_INFO -> {
-                        openAppInfo(entry.packageName)
-                        true
-                    }
-                    else -> false
+        val actions = listOf(
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_ADD_TO_HOME, getString(R.string.action_add_to_home)),
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_PIN_TO_DOCK, getString(R.string.action_pin_to_dock)),
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_ADD_TO_FOLDER, getString(R.string.action_add_to_folder)),
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_APP_INFO, getString(R.string.action_app_info)),
+        )
+        io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
+            when (actionId) {
+                MENU_ID_ADD_TO_HOME -> {
+                    app.workspaceController.addApp(entry.componentKey)
+                    onWorkspaceChanged?.invoke()
                 }
+                MENU_ID_PIN_TO_DOCK -> {
+                    // Section 28: pinning leaves any existing home shortcut for the
+                    // same app untouched — home and dock are independent surfaces.
+                    val pinned = app.workspaceController.addToDock(entry.componentKey)
+                    if (!pinned) {
+                        Toast.makeText(requireContext(), R.string.dock_full, Toast.LENGTH_SHORT).show()
+                    } else {
+                        onWorkspaceChanged?.invoke()
+                    }
+                }
+                MENU_ID_ADD_TO_FOLDER -> {
+                    io.relite.home.ui.folder.FolderPicker.show(
+                        requireContext(),
+                        app.workspaceController,
+                        entry.componentKey,
+                    ) { onWorkspaceChanged?.invoke() }
+                }
+                MENU_ID_APP_INFO -> openAppInfo(entry.packageName)
             }
-        }.show()
+        }
     }
 
     private fun openAppInfo(packageName: String) {

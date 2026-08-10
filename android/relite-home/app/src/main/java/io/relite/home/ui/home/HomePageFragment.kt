@@ -8,12 +8,10 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.LayoutInflater
-import android.view.Menu
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.widget.ImageView
-import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
@@ -389,72 +387,61 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
      * isn't wired to a UI gesture in this pass.
      */
     private fun showLongPressMenu(app: ReliteHomeApplication, item: WorkspaceItem, anchor: View) {
-        PopupMenu(requireContext(), anchor).apply {
-            menu.add(Menu.NONE, MENU_ID_REMOVE_FROM_HOME, Menu.NONE, R.string.action_remove_from_home)
-            menu.add(Menu.NONE, MENU_ID_MOVE_TO_PAGE, Menu.NONE, R.string.action_move_to_page)
+        val actions = buildList {
+            add(io.relite.home.ui.menu.LauncherAction(MENU_ID_REMOVE_FROM_HOME, getString(R.string.action_remove_from_home)))
+            add(io.relite.home.ui.menu.LauncherAction(MENU_ID_MOVE_TO_PAGE, getString(R.string.action_move_to_page)))
             if (item is WorkspaceItem.AppIcon) {
-                menu.add(Menu.NONE, MENU_ID_PIN_TO_DOCK, Menu.NONE, R.string.action_pin_to_dock)
-                menu.add(Menu.NONE, MENU_ID_ADD_TO_FOLDER, Menu.NONE, R.string.action_add_to_folder)
-                menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
+                add(io.relite.home.ui.menu.LauncherAction(MENU_ID_PIN_TO_DOCK, getString(R.string.action_pin_to_dock)))
+                add(io.relite.home.ui.menu.LauncherAction(MENU_ID_ADD_TO_FOLDER, getString(R.string.action_add_to_folder)))
+                add(io.relite.home.ui.menu.LauncherAction(MENU_ID_APP_INFO, getString(R.string.action_app_info)))
             }
             if (item is WorkspaceItem.WidgetIcon) {
-                menu.add(Menu.NONE, MENU_ID_RESIZE_WIDGET, Menu.NONE, R.string.action_resize_widget)
+                add(io.relite.home.ui.menu.LauncherAction(MENU_ID_RESIZE_WIDGET, getString(R.string.action_resize_widget)))
             }
-            setOnMenuItemClickListener { menuItem ->
-                when (menuItem.itemId) {
-                    MENU_ID_REMOVE_FROM_HOME -> {
-                        if (item is WorkspaceItem.WidgetIcon) {
-                            io.relite.home.ui.widget.WidgetLifecycle.removeWidgetSafely(
-                                app.workspaceController,
-                                app.appWidgetHost,
-                                item,
-                            )
+        }
+        io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
+            when (actionId) {
+                MENU_ID_REMOVE_FROM_HOME -> {
+                    if (item is WorkspaceItem.WidgetIcon) {
+                        io.relite.home.ui.widget.WidgetLifecycle.removeWidgetSafely(
+                            app.workspaceController,
+                            app.appWidgetHost,
+                            item,
+                        )
+                    } else {
+                        app.workspaceController.removeItem(item.id)
+                    }
+                    onWorkspaceChanged?.invoke()
+                }
+                MENU_ID_PIN_TO_DOCK -> {
+                    if (item is WorkspaceItem.AppIcon) {
+                        val pinned = app.workspaceController.addToDock(item.componentKey)
+                        if (!pinned) {
+                            Toast.makeText(requireContext(), R.string.dock_full, Toast.LENGTH_SHORT).show()
                         } else {
-                            app.workspaceController.removeItem(item.id)
+                            onWorkspaceChanged?.invoke()
                         }
-                        onWorkspaceChanged?.invoke()
-                        true
                     }
-                    MENU_ID_PIN_TO_DOCK -> {
-                        if (item is WorkspaceItem.AppIcon) {
-                            val pinned = app.workspaceController.addToDock(item.componentKey)
-                            if (!pinned) {
-                                Toast.makeText(requireContext(), R.string.dock_full, Toast.LENGTH_SHORT).show()
-                            } else {
-                                onWorkspaceChanged?.invoke()
-                            }
-                        }
-                        true
+                }
+                MENU_ID_MOVE_TO_PAGE -> showMoveToPageDialog(app, item)
+                MENU_ID_RESIZE_WIDGET -> if (item is WorkspaceItem.WidgetIcon) showResizeDialog(app, item)
+                MENU_ID_ADD_TO_FOLDER -> {
+                    if (item is WorkspaceItem.AppIcon) {
+                        io.relite.home.ui.folder.FolderPicker.show(
+                            requireContext(),
+                            app.workspaceController,
+                            item.componentKey,
+                            existingHomeItemId = item.id,
+                        ) { onWorkspaceChanged?.invoke() }
                     }
-                    MENU_ID_MOVE_TO_PAGE -> {
-                        showMoveToPageDialog(app, item)
-                        true
+                }
+                MENU_ID_APP_INFO -> {
+                    if (item is WorkspaceItem.AppIcon) {
+                        openAppInfo(item.componentKey.substringBefore("/"))
                     }
-                    MENU_ID_RESIZE_WIDGET -> {
-                        if (item is WorkspaceItem.WidgetIcon) showResizeDialog(app, item)
-                        true
-                    }
-                    MENU_ID_ADD_TO_FOLDER -> {
-                        if (item is WorkspaceItem.AppIcon) {
-                            io.relite.home.ui.folder.FolderPicker.show(
-                                requireContext(),
-                                app.workspaceController,
-                                item.componentKey,
-                                existingHomeItemId = item.id,
-                            ) { onWorkspaceChanged?.invoke() }
-                        }
-                        true
-                    }
-                    MENU_ID_APP_INFO -> {
-                        if (item is WorkspaceItem.AppIcon) {
-                            openAppInfo(item.componentKey.substringBefore("/"))
-                        }
-                        true
-                    }
-                    else -> false
                 }
             }
-        }.show()
+        }
     }
 
     private fun openAppInfo(packageName: String) {

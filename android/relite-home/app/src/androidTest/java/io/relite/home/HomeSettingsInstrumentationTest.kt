@@ -37,19 +37,26 @@ class HomeSettingsInstrumentationTest {
     }
 
     @Test
-    fun toggleSwitchesReflectAndPersistPreferences() {
+    fun theAppLabelsToggleReflectsAndPersistsThePreference() {
         ActivityScenario.launch(HomeSettingsActivity::class.java).use {
             onView(withId(R.id.settings_show_app_labels)).perform(scrollTo(), click())
-            onView(withId(R.id.settings_show_apps_button)).perform(scrollTo(), click())
         }
         // Reopening must reflect the persisted (now-flipped) state, not reset to defaults.
         ActivityScenario.launch(HomeSettingsActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 assertEquals(false, io.relite.home.util.HomePreference.getShowAppLabels(activity))
+            }
+        }
+    }
+
+    @Test
+    fun theAppsButtonToggleReflectsAndPersistsThePreference() {
+        ActivityScenario.launch(HomeSettingsActivity::class.java).use {
+            onView(withId(R.id.settings_show_apps_button)).perform(scrollTo(), click())
+        }
+        ActivityScenario.launch(HomeSettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
                 assertEquals(false, io.relite.home.util.HomePreference.getShowAppsButton(activity))
-                // Restore defaults so this test doesn't leak state into other tests.
-                io.relite.home.util.HomePreference.setShowAppLabels(activity, true)
-                io.relite.home.util.HomePreference.setShowAppsButton(activity, true)
             }
         }
     }

@@ -21,4 +21,8 @@
 
     <dimen name="edit_mode_chip_size">48dp</dimen>
     <dimen name="edit_mode_chip_margin">12dp</dimen>
+
+    <dimen name="context_menu_corner_radius">16dp</dimen>
+    <dimen name="context_menu_padding_horizontal">20dp</dimen>
+    <dimen name="context_menu_elevation">8dp</dimen>
 </resources>

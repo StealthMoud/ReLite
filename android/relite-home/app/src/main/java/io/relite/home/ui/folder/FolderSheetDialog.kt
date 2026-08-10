@@ -3,9 +3,7 @@ package io.relite.home.ui.folder
 import android.app.AlertDialog
 import android.app.Dialog
 import android.os.Bundle
-import android.view.Menu
 import android.widget.EditText
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.GridLayoutManager
@@ -95,41 +93,32 @@ class FolderSheetDialog : DialogFragment() {
             .find { it.id == folderId } ?: return
         val index = folder.itemComponentKeys.indexOf(entry.componentKey)
 
-        PopupMenu(requireContext(), anchor).apply {
-            if (index > 0) menu.add(Menu.NONE, MENU_ID_MOVE_LEFT, Menu.NONE, R.string.action_move_left)
+        val actions = buildList {
+            if (index > 0) add(io.relite.home.ui.menu.LauncherAction(MENU_ID_MOVE_LEFT, getString(R.string.action_move_left)))
             if (index in 0 until folder.itemComponentKeys.size - 1) {
-                menu.add(Menu.NONE, MENU_ID_MOVE_RIGHT, Menu.NONE, R.string.action_move_right)
+                add(io.relite.home.ui.menu.LauncherAction(MENU_ID_MOVE_RIGHT, getString(R.string.action_move_right)))
             }
-            menu.add(Menu.NONE, MENU_ID_REMOVE, Menu.NONE, R.string.action_remove_from_folder)
-            menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
-            setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    MENU_ID_MOVE_LEFT -> {
-                        reorder(folder.itemComponentKeys, index, index - 1)
-                        true
-                    }
-                    MENU_ID_MOVE_RIGHT -> {
-                        reorder(folder.itemComponentKeys, index, index + 1)
-                        true
-                    }
-                    MENU_ID_REMOVE -> {
-                        app.workspaceController.removeAppFromFolder(folderId, entry.componentKey)
-                        onWorkspaceChanged?.invoke()
-                        refresh()
-                        true
-                    }
-                    MENU_ID_APP_INFO -> {
-                        val intent = android.content.Intent(
-                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            android.net.Uri.fromParts("package", entry.packageName, null),
-                        )
-                        startActivity(intent)
-                        true
-                    }
-                    else -> false
+            add(io.relite.home.ui.menu.LauncherAction(MENU_ID_REMOVE, getString(R.string.action_remove_from_folder)))
+            add(io.relite.home.ui.menu.LauncherAction(MENU_ID_APP_INFO, getString(R.string.action_app_info)))
+        }
+        io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
+            when (actionId) {
+                MENU_ID_MOVE_LEFT -> reorder(folder.itemComponentKeys, index, index - 1)
+                MENU_ID_MOVE_RIGHT -> reorder(folder.itemComponentKeys, index, index + 1)
+                MENU_ID_REMOVE -> {
+                    app.workspaceController.removeAppFromFolder(folderId, entry.componentKey)
+                    onWorkspaceChanged?.invoke()
+                    refresh()
+                }
+                MENU_ID_APP_INFO -> {
+                    val intent = android.content.Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", entry.packageName, null),
+                    )
+                    startActivity(intent)
                 }
             }
-        }.show()
+        }
     }
 
     private fun reorder(current: List<String>, from: Int, to: Int) {
