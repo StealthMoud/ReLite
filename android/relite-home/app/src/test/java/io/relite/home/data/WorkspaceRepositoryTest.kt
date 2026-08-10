@@ -260,4 +260,26 @@ class WorkspaceRepositoryTest {
 
         assertEquals(1, repo.load().items.size) // untouched — importPortable never writes to storage itself
     }
+
+    @Test
+    fun `save refuses to persist a structurally invalid candidate`() {
+        // Section 26 (v0.5.0): validate at the repository boundary itself,
+        // not only inside WorkspaceController.mutate — a candidate with two
+        // overlapping items must never reach disk regardless of caller.
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage)
+        val overlapping = Workspace(
+            pageCount = 1,
+            items = listOf(
+                WorkspaceItem.AppIcon("a1", GridPosition(0, 0, 0), "io.relite.a/Main"),
+                WorkspaceItem.AppIcon("a2", GridPosition(0, 0, 0), "io.relite.b/Main"),
+            ),
+            dockComponentKeys = emptyList(),
+        )
+
+        val ok = repo.save(overlapping)
+
+        assertTrue(!ok)
+        assertEquals(0, repo.load().items.size) // storage was never written to
+    }
 }

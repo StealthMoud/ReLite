@@ -49,8 +49,19 @@ class WorkspaceRepository(private val storage: Storage, private val gridSpec: La
         }
     }
 
-    /** Returns true once the workspace is durably persisted — see [Storage.write]. */
-    fun save(workspace: Workspace): Boolean = storage.write(serialize(workspace))
+    /**
+     * Returns true once the workspace is durably persisted — see
+     * [Storage.write]. Section 26 (v0.5.0): validates [workspace] itself
+     * before writing, refusing to persist a structurally invalid candidate
+     * even if a caller other than [WorkspaceController] ever calls this
+     * directly — [WorkspaceController.mutate] already only builds valid
+     * candidates, so this is a defense-in-depth boundary check, not a path
+     * expected to actually reject anything in normal operation.
+     */
+    fun save(workspace: Workspace): Boolean {
+        if (validate(workspace, gridSpec).isNotEmpty()) return false
+        return storage.write(serialize(workspace))
+    }
 
     /**
      * Section 60: a portable layout for export/import — the same schema as
