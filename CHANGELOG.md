@@ -8,6 +8,47 @@ milestones (0.1, 0.2, 1.0).
 
 ## [Unreleased]
 
+ReLite Home's interactive editable-workspace UI — the thing v0.2.0/v0.3.0
+explicitly left at `WorkspaceController`-level only — is now wired up:
+
+### Added (ReLite Home, v0.4.0 in progress)
+
+- Cell-aware `WorkspaceGridLayout` rendering each item's real
+  (column, row, span) instead of list-order placement.
+- Long-press-then-drag to move apps/folders/widgets within a page, and
+  across pages via an edge-hover timer (`DragOverlay`, `EdgeHover`) that
+  keeps the dragged icon rendering while `ViewPager2` swaps the
+  underlying page fragment mid-gesture.
+- Fully editable dock (remove, App info, drag-reorder, pin from
+  drawer/home, "Add to Home" from the dock).
+- Folder creation/rename/add-member/remove-member/delete through
+  `FolderSheetDialog` and a shared `FolderPicker`.
+- Page management (add page, remove an empty page, "Move to page…").
+- Complete widget pipeline: pick, allocate, bind (with permission
+  fallback), configure, place, persist, resize, remove, with widget-id
+  cleanup on every failure path.
+- Layout export/import via the Storage Access Framework, and a Home
+  Settings screen (export/import/reset/default-launcher helper/About).
+- System wallpaper behind the home screen.
+- Deterministic tiered drawer search (exact > prefix > word-prefix >
+  all-tokens-any-order).
+- Explicit System/Light/Dark theme selection (`ThemePreference`).
+- WindowInsets handling for the workspace, drawer, and dock (edge-to-edge,
+  no hardcoded padding constants).
+- Accessibility: contentDescriptions for folders/widgets, 48dp minimum
+  touch targets, non-drag alternatives for every drag-based move.
+- The mandatory `androidTest` instrumentation suite
+  (`app/src/androidTest/`) and `scripts/test-launcher-emulator.sh`.
+
+### Known gaps as of this entry
+
+Not yet run on a physical device or emulator — none was available in the
+environment that produced this work, so drag gestures, edge-hover timing,
+theme recreation, and the instrumentation suite have been compiled and
+code-reviewed but not exercised live. No controlled A/B benchmark, frame/
+jank measurement, or memory-stress pass has been run against this build.
+Not tagged as a release yet.
+
 ## [0.3.0] — 2026-08-09
 
 A correctness- and packaging-focused release: the profile engine is now

@@ -190,7 +190,9 @@ adb install -r android/relite-home/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 See `android/relite-home/README.md` for setting it as your default
-launcher and exactly what's implemented versus domain-logic-only so far.
+launcher and the full v0.4.0 feature list (workspace drag/drop including
+cross-page, dock, folders, widgets, layout export/import, themes,
+WindowInsets, accessibility).
 
 ## Architecture
 
