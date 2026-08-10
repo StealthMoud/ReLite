@@ -169,6 +169,16 @@ class MainActivity : AppCompatActivity() {
                 app.workspaceController.reorderDock(newOrder)
                 refreshWorkspace()
             },
+            onAddToHome = { componentKey ->
+                // Section 9: the dock entry stays in place — this only adds
+                // a second, independent shortcut on the workspace.
+                val added = app.workspaceController.addApp(componentKey)
+                if (added == null) {
+                    android.widget.Toast.makeText(this, R.string.workspace_full, android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    refreshWorkspace()
+                }
+            },
         )
     }
 

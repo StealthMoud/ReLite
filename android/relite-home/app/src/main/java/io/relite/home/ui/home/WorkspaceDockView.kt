@@ -46,6 +46,7 @@ class WorkspaceDockView @JvmOverloads constructor(
         onRemoveFromDock: (String) -> Unit = {},
         onAppInfo: (String) -> Unit = {},
         onReorder: (List<String>) -> Unit = {},
+        onAddToHome: (String) -> Unit = {},
     ) {
         this.componentKeys = componentKeys
         removeAllViews()
@@ -57,7 +58,7 @@ class WorkspaceDockView @JvmOverloads constructor(
             button.setImageDrawable(iconCache.get(app.packageName, app.activityName))
             button.contentDescription = app.label
             button.setOnClickListener { onAppClick(app) }
-            wireDockInteractions(button, key, onRemoveFromDock, onAppInfo, onReorder)
+            wireDockInteractions(button, key, onRemoveFromDock, onAppInfo, onReorder, onAddToHome)
             addView(button)
         }
 
@@ -72,6 +73,7 @@ class WorkspaceDockView @JvmOverloads constructor(
         onRemoveFromDock: (String) -> Unit,
         onAppInfo: (String) -> Unit,
         onReorder: (List<String>) -> Unit,
+        onAddToHome: (String) -> Unit,
     ) {
         var dragArmed = false
         var downRawX = 0f
@@ -102,7 +104,7 @@ class WorkspaceDockView @JvmOverloads constructor(
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (dragArmed) {
                         dragArmed = false
-                        finishDockDrag(v, componentKey, onRemoveFromDock, onAppInfo, onReorder)
+                        finishDockDrag(v, componentKey, onRemoveFromDock, onAppInfo, onReorder, onAddToHome)
                         true
                     } else {
                         false
@@ -145,29 +147,45 @@ class WorkspaceDockView @JvmOverloads constructor(
         onRemoveFromDock: (String) -> Unit,
         onAppInfo: (String) -> Unit,
         onReorder: (List<String>) -> Unit,
+        onAddToHome: (String) -> Unit,
     ) {
         v.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
         val moved = abs(v.translationX) > touchSlop
         v.translationX = 0f
         v.alpha = 1f
         if (!moved) {
-            showLongPressMenu(v, componentKey, onRemoveFromDock, onAppInfo)
+            showLongPressMenu(v, componentKey, onRemoveFromDock, onAppInfo, onAddToHome)
             return
         }
         onReorder(componentKeys)
     }
 
+    /**
+     * Section 9-10: "dock -> home" is reached via this menu's "Add to Home"
+     * entry rather than a drag-out-of-the-dock gesture — a reliable menu
+     * equivalent (section 125's acceptance gate explicitly allows either),
+     * chosen over a cross-surface drag whose correctness could not be
+     * verified without a device/emulator this pass (section 171). The dock
+     * entry is left in place, matching "dock->home... does not silently
+     * move/delete dock item" (section 9).
+     */
     private fun showLongPressMenu(
         anchor: View,
         componentKey: String,
         onRemoveFromDock: (String) -> Unit,
         onAppInfo: (String) -> Unit,
+        onAddToHome: (String) -> Unit,
     ) {
         PopupMenu(context, anchor).apply {
+            menu.add(Menu.NONE, MENU_ID_ADD_TO_HOME, Menu.NONE, R.string.action_add_to_home)
             menu.add(Menu.NONE, MENU_ID_REMOVE_FROM_DOCK, Menu.NONE, R.string.action_remove_from_dock)
             menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
+                    MENU_ID_ADD_TO_HOME -> {
+                        onAddToHome(componentKey)
+                        true
+                    }
                     MENU_ID_REMOVE_FROM_DOCK -> {
                         onRemoveFromDock(componentKey)
                         true
@@ -183,7 +201,8 @@ class WorkspaceDockView @JvmOverloads constructor(
     }
 
     companion object {
-        private const val MENU_ID_REMOVE_FROM_DOCK = 1
-        private const val MENU_ID_APP_INFO = 2
+        private const val MENU_ID_ADD_TO_HOME = 1
+        private const val MENU_ID_REMOVE_FROM_DOCK = 2
+        private const val MENU_ID_APP_INFO = 3
     }
 }
