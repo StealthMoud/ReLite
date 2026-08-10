@@ -306,6 +306,27 @@ class WorkspaceController(
     }
 
     /**
+     * Section 28 (v0.5.0 completion pass): grows a folder to occupy a real
+     * 2x2 area anchored at its current cell — only if that whole area is
+     * actually free (the folder's own current 1x1 cell is excluded from the
+     * collision check, since it's the folder's own space).
+     */
+    fun enlargeFolder(folderId: String): Boolean {
+        val folder = findFolder(folderId) ?: return false
+        if (folder.size == FolderSize.EXPANDED) return true
+        val rect = GridRect.of(folder.position, 2, 2)
+        if (!isFree(rect, excludeId = folderId)) return false
+        return updateFolder(folderId) { it.copy(size = FolderSize.EXPANDED) }
+    }
+
+    /** Section 29 (v0.5.0 completion pass): always valid — shrinking only ever reduces a footprint the folder already legitimately occupies. */
+    fun shrinkFolder(folderId: String): Boolean {
+        val folder = findFolder(folderId) ?: return false
+        if (folder.size == FolderSize.COMPACT) return true
+        return updateFolder(folderId) { it.copy(size = FolderSize.COMPACT) }
+    }
+
+    /**
      * Section 29 (v0.5.0): folds an existing home app being folded into an
      * existing folder into one transaction. The previous UI-level pattern
      * called [addAppToFolder] then, on success, a separate [removeItem] —
@@ -544,10 +565,7 @@ class WorkspaceController(
         return ok
     }
 
-    private fun spanOf(item: WorkspaceItem): Pair<Int, Int> = when (item) {
-        is WorkspaceItem.WidgetIcon -> item.spanColumns to item.spanRows
-        is WorkspaceItem.AppIcon, is WorkspaceItem.FolderIcon -> 1 to 1
-    }
+    private fun spanOf(item: WorkspaceItem): Pair<Int, Int> = GridRect.of(item).let { it.spanColumns to it.spanRows }
 
     private fun isFree(rect: GridRect, excludeId: String? = null): Boolean {
         if (!rect.isWithinBounds(gridSpec, workspace.pageCount)) return false

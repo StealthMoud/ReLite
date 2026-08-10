@@ -783,6 +783,49 @@ class WorkspaceControllerTest {
         assertEquals(1, controller.current().defaultPage)
     }
 
+    // --- enlargeFolder / shrinkFolder (sections 26-29, v0.5.0 completion pass) ---
+
+    @Test
+    fun `enlargeFolder grows a folder to a 2x2 area when it's free`() {
+        val folderId = controller.createFolder("F", listOf("io.relite.a/Main"), GridPosition(0, 0, 0))!!
+        assertTrue(controller.enlargeFolder(folderId))
+        val folder = controller.current().items.single { it.id == folderId } as WorkspaceItem.FolderIcon
+        assertEquals(FolderSize.EXPANDED, folder.size)
+        assertEquals(GridRect(0, 0, 0, 2, 2), GridRect.of(folder))
+    }
+
+    @Test
+    fun `enlargeFolder is rejected when the 2x2 area is not free`() {
+        val folderId = controller.createFolder("F", emptyList(), GridPosition(0, 0, 0))!!
+        controller.addApp("io.relite.blocker/Main") // lands in the next free cell, (1, 0) — inside the 2x2 area
+        assertFalse(controller.enlargeFolder(folderId))
+        val folder = controller.current().items.single { it.id == folderId } as WorkspaceItem.FolderIcon
+        assertEquals(FolderSize.COMPACT, folder.size)
+    }
+
+    @Test
+    fun `enlargeFolder is a no-op success when already expanded`() {
+        val folderId = controller.createFolder("F", emptyList(), GridPosition(0, 0, 0))!!
+        assertTrue(controller.enlargeFolder(folderId))
+        assertTrue(controller.enlargeFolder(folderId))
+    }
+
+    @Test
+    fun `shrinkFolder always succeeds and restores the 1x1 footprint`() {
+        val folderId = controller.createFolder("F", emptyList(), GridPosition(0, 0, 0))!!
+        controller.enlargeFolder(folderId)
+        assertTrue(controller.shrinkFolder(folderId))
+        val folder = controller.current().items.single { it.id == folderId } as WorkspaceItem.FolderIcon
+        assertEquals(FolderSize.COMPACT, folder.size)
+        assertEquals(GridRect(0, 0, 0, 1, 1), GridRect.of(folder))
+    }
+
+    @Test
+    fun `enlargeFolder and shrinkFolder reject a nonexistent folder id`() {
+        assertFalse(controller.enlargeFolder("missing"))
+        assertFalse(controller.shrinkFolder("missing"))
+    }
+
     // --- createFolderFromApps (sections 19-22, v0.5.0 completion pass) ---
 
     @Test

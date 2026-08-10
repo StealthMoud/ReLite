@@ -197,6 +197,7 @@ class WorkspaceRepository(
                 json.put("type", TYPE_FOLDER)
                 json.put("label", item.label)
                 json.put("itemComponentKeys", JSONArray(item.itemComponentKeys))
+                json.put("folderSize", item.size.name)
             }
             is WorkspaceItem.WidgetIcon -> {
                 json.put("type", TYPE_WIDGET)
@@ -217,7 +218,13 @@ class WorkspaceRepository(
             TYPE_FOLDER -> {
                 val keysArray = json.optJSONArray("itemComponentKeys") ?: JSONArray()
                 val keys = (0 until keysArray.length()).map { keysArray.getString(it) }
-                WorkspaceItem.FolderIcon(id, position, json.getString("label"), keys)
+                // Section 26 (v0.5.0 completion pass): a workspace saved
+                // before this field existed has no "folderSize" key at all —
+                // every such folder migrates in as COMPACT, its only
+                // possible footprint before this pass.
+                val size = runCatching { FolderSize.valueOf(json.optString("folderSize", FolderSize.COMPACT.name)) }
+                    .getOrDefault(FolderSize.COMPACT)
+                WorkspaceItem.FolderIcon(id, position, json.getString("label"), keys, size)
             }
             TYPE_WIDGET -> WorkspaceItem.WidgetIcon(
                 id, position,

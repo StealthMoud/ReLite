@@ -3,6 +3,12 @@ package io.relite.home.data
 /** A cell position on a home screen page or in the dock. */
 data class GridPosition(val page: Int, val column: Int, val row: Int)
 
+/** Section 26-27 (v0.5.0 completion pass): a folder's footprint on the grid — see [WorkspaceItem.FolderIcon.size]. */
+enum class FolderSize {
+    COMPACT,
+    EXPANDED,
+}
+
 /**
  * Anything that can occupy a workspace cell: an app shortcut, a folder, or
  * a hosted widget. Sealed so persistence/rendering code stays exhaustive.
@@ -22,6 +28,12 @@ sealed class WorkspaceItem {
         override val position: GridPosition,
         val label: String,
         val itemComponentKeys: List<String>,
+        // Section 26-27 (v0.5.0 completion pass): a folder normally occupies
+        // one cell like an app icon; EXPANDED occupies a real 2x2 grid area
+        // showing its member icons directly, launchable without opening the
+        // full editor. Every folder that existed before this field was
+        // added deserializes as COMPACT — see WorkspaceRepository.
+        val size: FolderSize = FolderSize.COMPACT,
     ) : WorkspaceItem()
 
     data class WidgetIcon(

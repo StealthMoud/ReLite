@@ -302,6 +302,32 @@ class WorkspaceRepositoryTest {
         assertEquals(HomeGridPreset.FOUR_BY_SIX, repo.load().homeGrid)
     }
 
+    // --- folder size (sections 26-27, v0.5.0 completion pass) ---
+
+    @Test
+    fun `a folder's EXPANDED size round-trips through save and load`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage)
+        val folder = WorkspaceItem.FolderIcon("f1", GridPosition(0, 0, 0), "F", emptyList(), FolderSize.EXPANDED)
+        repo.save(Workspace.empty().copy(items = listOf(folder)))
+
+        val loaded = repo.load().items.single() as WorkspaceItem.FolderIcon
+        assertEquals(FolderSize.EXPANDED, loaded.size)
+    }
+
+    @Test
+    fun `a folder saved before folderSize existed defaults to COMPACT on load`() {
+        val json = """
+            {"schema": 3, "pageCount": 1, "dock": [], "items": [
+                {"id": "f1", "position": {"page": 0, "column": 0, "row": 0}, "type": "folder", "label": "F", "itemComponentKeys": []}
+            ]}
+        """.trimIndent()
+        val repo = WorkspaceRepository(InMemoryStorage(json))
+
+        val loaded = repo.load().items.single() as WorkspaceItem.FolderIcon
+        assertEquals(FolderSize.COMPACT, loaded.size)
+    }
+
     // --- defaultPage (sections 80/119, v0.5.0) ---
 
     @Test

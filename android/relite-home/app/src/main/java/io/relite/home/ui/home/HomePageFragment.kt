@@ -74,22 +74,57 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         }
     }
 
-    private fun spanOf(item: WorkspaceItem): Pair<Int, Int> = when (item) {
-        is WorkspaceItem.WidgetIcon -> item.spanColumns to item.spanRows
-        is WorkspaceItem.AppIcon, is WorkspaceItem.FolderIcon -> 1 to 1
-    }
+    private fun spanOf(item: WorkspaceItem): Pair<Int, Int> =
+        io.relite.home.data.GridRect.of(item).let { it.spanColumns to it.spanRows }
 
     private fun buildCellView(
         app: ReliteHomeApplication,
         item: WorkspaceItem,
         labels: Map<String, AppEntry>,
     ): View {
-        val cellView: View = when (item) {
-            is WorkspaceItem.WidgetIcon -> buildWidgetView(app, item)
+        val cellView: View = when {
+            item is WorkspaceItem.WidgetIcon -> buildWidgetView(app, item)
+            item is WorkspaceItem.FolderIcon && item.size == io.relite.home.data.FolderSize.EXPANDED -> buildExpandedFolderView(app, item, labels)
             else -> buildIconView(app, item, labels)
         }
         wireInteractions(app, item, cellView)
         return cellView
+    }
+
+    /**
+     * Section 30-31 (v0.5.0 completion pass): a real 2x2-cell view showing
+     * up to 4 member icons directly — each independently launchable without
+     * opening the full editor. Members each own their click listener, so a
+     * tap that lands on one never reaches wireInteractions' outer click
+     * listener on [cellView]; a tap on the header/empty background falls
+     * through to that outer listener, which still opens the full editor
+     * (host.openFolder), same as a compact folder's single-tap behavior.
+     */
+    private fun buildExpandedFolderView(app: ReliteHomeApplication, folder: WorkspaceItem.FolderIcon, labels: Map<String, AppEntry>): View {
+        val container = LayoutInflater.from(requireContext())
+            .inflate(R.layout.item_workspace_folder_expanded, grid, false) as android.widget.FrameLayout
+        container.findViewById<TextView>(R.id.expanded_folder_title).text = folder.label
+
+        val membersGrid = container.findViewById<android.widget.GridLayout>(R.id.expanded_folder_members)
+        membersGrid.removeAllViews()
+        folder.itemComponentKeys.take(4).forEach { componentKey ->
+            val entry = labels[componentKey] ?: return@forEach
+            val (pkg, activity) = componentKey.split("/", limit = 2)
+            val memberIcon = ImageView(requireContext()).apply {
+                layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = 0
+                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                    rowSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                }
+                setImageDrawable(app.iconCache.get(pkg, activity, resolvedIconSizePx()))
+                contentDescription = entry.label
+                setOnClickListener { host.launchComponent(componentKey) }
+            }
+            membersGrid.addView(memberIcon)
+        }
+        container.contentDescription = getString(R.string.folder_content_description, folder.label, folder.itemComponentKeys.size)
+        return container
     }
 
     private fun buildIconView(app: ReliteHomeApplication, item: WorkspaceItem, labels: Map<String, AppEntry>): View {
@@ -488,6 +523,13 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             if (item is WorkspaceItem.WidgetIcon) {
                 add(io.relite.home.ui.menu.LauncherAction(MENU_ID_RESIZE_WIDGET, getString(R.string.action_resize_widget)))
             }
+            if (item is WorkspaceItem.FolderIcon) {
+                if (item.size == io.relite.home.data.FolderSize.COMPACT) {
+                    add(io.relite.home.ui.menu.LauncherAction(MENU_ID_ENLARGE_FOLDER, getString(R.string.action_enlarge_folder)))
+                } else {
+                    add(io.relite.home.ui.menu.LauncherAction(MENU_ID_SHRINK_FOLDER, getString(R.string.action_shrink_folder)))
+                }
+            }
         }
         io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
             when (actionId) {
@@ -528,6 +570,21 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 MENU_ID_APP_INFO -> {
                     if (item is WorkspaceItem.AppIcon) {
                         openAppInfo(item.componentKey.substringBefore("/"))
+                    }
+                }
+                MENU_ID_ENLARGE_FOLDER -> {
+                    if (item is WorkspaceItem.FolderIcon) {
+                        if (app.workspaceController.enlargeFolder(item.id)) {
+                            host.workspaceChanged()
+                        } else {
+                            Toast.makeText(requireContext(), R.string.folder_enlarge_no_room, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                MENU_ID_SHRINK_FOLDER -> {
+                    if (item is WorkspaceItem.FolderIcon) {
+                        app.workspaceController.shrinkFolder(item.id)
+                        host.workspaceChanged()
                     }
                 }
             }
@@ -618,6 +675,8 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         private const val MENU_ID_ADD_TO_FOLDER = 4
         private const val MENU_ID_MOVE_TO_PAGE = 5
         private const val MENU_ID_RESIZE_WIDGET = 6
+        private const val MENU_ID_ENLARGE_FOLDER = 7
+        private const val MENU_ID_SHRINK_FOLDER = 8
 
         // Section 2: long enough that grazing the edge mid-drag doesn't
         // accidentally flip a page, short enough to feel responsive when

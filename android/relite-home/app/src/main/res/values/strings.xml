@@ -72,6 +72,9 @@
     <string name="resize_height_plus">Height +</string>
     <string name="resize_current_size">%1$d × %2$d cells</string>
     <string name="resize_no_room">No room to resize there</string>
+    <string name="action_enlarge_folder">Enlarge</string>
+    <string name="action_shrink_folder">Shrink</string>
+    <string name="folder_enlarge_no_room">No room to enlarge this folder here</string>
     <string name="done">Done</string>
     <string name="action_home_settings">Home Settings</string>
     <string name="settings_export_layout">Export layout</string>

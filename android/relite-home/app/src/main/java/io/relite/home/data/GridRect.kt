@@ -37,11 +37,12 @@ data class GridRect(
     }
 
     companion object {
-        /** The rectangle a [WorkspaceItem] occupies — 1x1 for an icon/folder, its own span for a widget. */
+        /** The rectangle a [WorkspaceItem] occupies — 1x1 for an app icon or compact folder, 2x2 for an expanded folder, its own span for a widget. */
         fun of(item: WorkspaceItem): GridRect {
             val (spanColumns, spanRows) = when (item) {
                 is WorkspaceItem.WidgetIcon -> item.spanColumns to item.spanRows
-                is WorkspaceItem.AppIcon, is WorkspaceItem.FolderIcon -> 1 to 1
+                is WorkspaceItem.FolderIcon -> if (item.size == FolderSize.EXPANDED) 2 to 2 else 1 to 1
+                is WorkspaceItem.AppIcon -> 1 to 1
             }
             return GridRect(item.position.page, item.position.column, item.position.row, spanColumns, spanRows)
         }
