@@ -7,8 +7,15 @@
         <item name="android:textColorSecondary">@color/relite_text_secondary</item>
     </style>
 
+    <!--
+        Section 72: the home screen shows the system wallpaper — the system
+        compositor renders it directly behind this window, so ReLite Home
+        never decodes a wallpaper bitmap itself. windowBackground is null
+        rather than an opaque color so the wallpaper isn't painted over.
+    -->
     <style name="Theme.ReliteHome.Home">
-        <item name="android:windowBackground">@color/relite_background</item>
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@null</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
     </style>
