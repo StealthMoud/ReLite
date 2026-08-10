@@ -111,13 +111,39 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         return cellView
     }
 
-    /** A live [AppWidgetHostView] — not a placeholder icon (section 48/57). */
-    private fun buildWidgetView(app: ReliteHomeApplication, item: WorkspaceItem.WidgetIcon): AppWidgetHostView {
+    /**
+     * A live [AppWidgetHostView] when the binding is still valid, or a
+     * removable placeholder when it isn't (section 10, v0.4.1) — a stale
+     * binding (provider uninstalled, or an id the host never actually
+     * bound) must not crash, and must still be removable via the normal
+     * long-press "Remove from Home" menu like any other item.
+     */
+    private fun buildWidgetView(app: ReliteHomeApplication, item: WorkspaceItem.WidgetIcon): View {
         val hostView = app.appWidgetHost.bindWidgetView(item.appWidgetId)
+        if (hostView == null) {
+            val placeholder = LayoutInflater.from(requireContext()).inflate(R.layout.item_workspace_icon, grid, false)
+            placeholder.findViewById<TextView>(R.id.label).text = getString(R.string.stale_widget_label)
+            placeholder.findViewById<ImageView>(R.id.icon).setImageResource(android.R.drawable.ic_dialog_alert)
+            placeholder.contentDescription = getString(R.string.stale_widget_label)
+            return placeholder
+        }
         // The provider's own view usually announces its content, but the
         // hosting cell itself still benefits from a label — falls back to
         // the provider's component name when no friendlier label is known.
         hostView.contentDescription = item.providerComponent.substringAfterLast(".").ifBlank { item.providerComponent }
+
+        // Section 13-14: notify the provider of the current rendered size
+        // whenever its view is (re)built — including right after a resize,
+        // since a resize always triggers a full page rebuild via
+        // onWorkspaceChanged rather than mutating the live view in place.
+        val gridSpec = app.workspaceController.gridSpec
+        val density = requireContext().resources.displayMetrics.density
+        val cellSizeDp = (requireContext().resources.displayMetrics.widthPixels / gridSpec.columns) / density
+        app.appWidgetHost.notifyResized(
+            hostView,
+            (item.spanColumns * cellSizeDp).toInt(),
+            (item.spanRows * cellSizeDp).toInt(),
+        )
         return hostView
     }
 
@@ -334,9 +360,14 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 when (menuItem.itemId) {
                     MENU_ID_REMOVE_FROM_HOME -> {
                         if (item is WorkspaceItem.WidgetIcon) {
-                            app.appWidgetHost.removeWidget(item.appWidgetId)
+                            io.relite.home.ui.widget.WidgetLifecycle.removeWidgetSafely(
+                                app.workspaceController,
+                                app.appWidgetHost,
+                                item,
+                            )
+                        } else {
+                            app.workspaceController.removeItem(item.id)
                         }
-                        app.workspaceController.removeItem(item.id)
                         onWorkspaceChanged?.invoke()
                         true
                     }
