@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Section 8 (v0.5.0 completion pass): deliberately minimal, RemoteViews-safe
+     (FrameLayout/TextView only) — the content itself is test fixture, not a
+     design surface. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF2196F3"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/test_widget_size_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:textColor="#FFFFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:text="@string/debug_test_widget_label" />
+
+</FrameLayout>

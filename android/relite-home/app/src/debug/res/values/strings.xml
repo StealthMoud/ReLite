@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="debug_test_widget_label">ReLite Test Widget</string>
+</resources>

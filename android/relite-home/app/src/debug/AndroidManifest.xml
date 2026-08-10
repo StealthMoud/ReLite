@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Section 8 (v0.5.0 completion pass): debug-only widget provider fixture —
+    merged into the debug build only by AGP's standard src/debug source-set
+    convention, never present in a release build. See
+    ReliteTestWidgetProvider's kdoc for why it exists.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <receiver
+            android:name=".debug.ReliteTestWidgetProvider"
+            android:exported="true"
+            android:label="@string/debug_test_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_relite_test" />
+        </receiver>
+    </application>
+
+</manifest>
