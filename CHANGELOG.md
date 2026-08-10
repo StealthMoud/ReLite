@@ -149,12 +149,13 @@ completion pass on the same milestone; see the dated bullets above.
   `WorkspaceItem.FolderIcon`) occupying a slot in Custom order, created
   via a menu-driven "Add to Apps folder" flow (not drag — Custom order's
   own long-press already starts a reorder drag with no merge detection).
-- **Widgets**: no debug test widget fixture, no picker preview
-  cards/grouping, no drag/edit-mode resize handles (still +/- buttons), no
-  portable widget descriptor/rebind-on-import flow — export still drops
-  widgets entirely, same as v0.4.1. An opt-in "Show widget labels" overlay
-  (off by default) is now implemented, closing the widget-labels gap
-  below.
+- **Widgets**: ~~no debug test widget fixture~~ — implemented
+  (`ReliteTestWidgetProvider`, `src/debug/` only); still missing: no
+  picker preview cards/grouping, no drag/edit-mode resize handles (still
+  +/- buttons), no portable widget descriptor/rebind-on-import flow —
+  export still drops widgets entirely, same as v0.4.1. An opt-in "Show
+  widget labels" overlay (off by default) is now implemented, closing
+  the widget-labels gap below.
 - ~~**Icon size scaling**: not implemented~~ — implemented: `IconSizePreference`
   (Small/Default/Large) plus a size-aware `IconCache` keyed on
   `"$pkg/$activity@$sizePx"` and an `IconNormalizer` that renders
