@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dock: WorkspaceDockView
     private lateinit var drawerContainer: FragmentContainerView
     private lateinit var dragOverlay: DragOverlay
+    private lateinit var pagerAdapter: HomePagerAdapter
 
     // Any result (OK or CANCELED) may have changed the workspace — a
     // cancellation mid-flow can still have consumed/freed a widget id, and
@@ -74,6 +75,29 @@ class MainActivity : AppCompatActivity() {
                 pageIndicator.currentPage = position
             }
         })
+
+        // Created exactly once and reused for this Activity's whole
+        // lifetime — see HomePagerAdapter's kdoc for why replacing
+        // pager.adapter on every edit corrupted FragmentStateAdapter's
+        // fragment lifecycle (duplicate/overlapping page views, found
+        // live on the RMX5303).
+        pagerAdapter = HomePagerAdapter(this, app.workspaceController.current().pageCount) { fragment ->
+            fragment.onAppLaunch = { componentKey -> launchApp(componentKey) }
+            fragment.onFolderOpen = { folder -> openFolder(folder) }
+            fragment.onWorkspaceChanged = { refreshWorkspace() }
+            fragment.onAddWidgetRequested = { widgetPickerLauncher.launch(WidgetPickerActivity.newIntent(this)) }
+            fragment.onDragStart = { source -> dragOverlay.beginDrag(source) }
+            fragment.onDragMove = { proxy, dx, dy -> dragOverlay.moveDrag(proxy, dx, dy) }
+            fragment.onDragEnd = { proxy -> dragOverlay.endDrag(proxy) }
+            fragment.onDragEdgeHover = { direction ->
+                val itemCount = pagerAdapter.itemCount
+                val target = (pager.currentItem + direction).coerceIn(0, itemCount - 1)
+                if (target != pager.currentItem) pager.setCurrentItem(target, true)
+                pager.currentItem
+            }
+            fragment.onDragCommitted = { page -> refreshWorkspace(page) }
+        }
+        pager.adapter = pagerAdapter
 
         refreshWorkspace()
 
@@ -115,42 +139,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * (Re-)builds the pager and dock from the current [io.relite.home.data.WorkspaceController]
+     * (Re-)binds the pager and dock from the current [io.relite.home.data.WorkspaceController]
      * state. Called on initial load and after any edit (add/remove/move,
-     * dock/folder changes) — rebuilding the pager is the simplest correct
-     * way to keep every page's RecyclerView in sync with the single
-     * source of truth without a more elaborate observer/diffing layer
-     * that this launcher's scope doesn't yet justify.
+     * dock/folder changes) via [pagerAdapter]'s `update`, which forces every
+     * currently-bound page fragment to be recreated with fresh data — see
+     * [HomePagerAdapter]'s kdoc for why the adapter object itself is
+     * created exactly once instead of being replaced on every call here.
      *
-     * Replacing `pager.adapter` resets ViewPager2's scroll position to 0
-     * unless told otherwise, which would silently kick the user back to
-     * page 0 after every single edit (add an app, pin to dock, drop a
-     * cross-page drag on page 2...) — [targetPage] defaults to wherever
-     * the user currently is so that doesn't happen; a caller that just
-     * moved something to a specific page (the cross-page drag drop) can
-     * pass that page explicitly instead.
+     * [targetPage] defaults to wherever the user currently is, coerced into
+     * the new page count, so an edit doesn't silently kick them back to
+     * page 0; a caller that just moved something to a specific page (the
+     * cross-page drag drop) can pass that page explicitly instead.
      */
     private fun refreshWorkspace(targetPage: Int? = null) {
         val workspace = app.workspaceController.current()
         pageIndicator.pageCount = workspace.pageCount
         val resolvedTargetPage = (targetPage ?: pager.currentItem).coerceIn(0, workspace.pageCount - 1)
 
-        pager.adapter = HomePagerAdapter(this, workspace.pageCount) { fragment ->
-            fragment.onAppLaunch = { componentKey -> launchApp(componentKey) }
-            fragment.onFolderOpen = { folder -> openFolder(folder) }
-            fragment.onWorkspaceChanged = { refreshWorkspace() }
-            fragment.onAddWidgetRequested = { widgetPickerLauncher.launch(WidgetPickerActivity.newIntent(this)) }
-            fragment.onDragStart = { source -> dragOverlay.beginDrag(source) }
-            fragment.onDragMove = { proxy, dx, dy -> dragOverlay.moveDrag(proxy, dx, dy) }
-            fragment.onDragEnd = { proxy -> dragOverlay.endDrag(proxy) }
-            fragment.onDragEdgeHover = { direction ->
-                val itemCount = pager.adapter?.itemCount ?: 1
-                val target = (pager.currentItem + direction).coerceIn(0, itemCount - 1)
-                if (target != pager.currentItem) pager.setCurrentItem(target, true)
-                pager.currentItem
-            }
-            fragment.onDragCommitted = { page -> refreshWorkspace(page) }
-        }
+        pagerAdapter.update(workspace.pageCount)
         pager.setCurrentItem(resolvedTargetPage, false)
 
         val allApps = app.appRepository.loadAll().associateBy { it.componentKey }

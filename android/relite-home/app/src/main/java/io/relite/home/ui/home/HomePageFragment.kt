@@ -162,8 +162,20 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         cellView.setOnLongClickListener {
             dragArmed = true
             dragTargetPage = pageIndex
-            proxy = onDragStart?.invoke(cellView)
-            cellView.visibility = View.INVISIBLE
+            // Deferred via post{}: adding the proxy to DragOverlay mutates
+            // a sibling ViewGroup's child list, and doing that synchronously
+            // from inside a long-press callback — itself firing mid
+            // touch-dispatch — corrupted the ConstraintLayout root's touch
+            // dispatch state and crashed with "IllegalStateException:
+            // already recycled once" in ViewGroup$TouchTarget.recycle,
+            // found testing this drag live on the RMX5303. post{} runs
+            // after the current dispatch cycle finishes, which is safe.
+            cellView.post {
+                if (dragArmed) {
+                    proxy = onDragStart?.invoke(cellView)
+                    cellView.alpha = 0f
+                }
+            }
             true
         }
         cellView.setOnTouchListener { _, event ->
@@ -194,8 +206,16 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                         dragArmed = false
                         cancelEdgeHoverTimer()
                         val moved = hypot(event.rawX - downRawX, event.rawY - downRawY) > touchSlop
-                        finishDrag(app, item, cellView, proxy, dragTargetPage, moved)
+                        val capturedProxy = proxy
                         proxy = null
+                        // Deferred for the same reason as the drag start
+                        // above: finishDrag can remove the proxy and (on a
+                        // successful drop) trigger a full pager rebuild,
+                        // both view-hierarchy mutations that must not run
+                        // synchronously inside this touch dispatch.
+                        cellView.post {
+                            finishDrag(app, item, cellView, capturedProxy, dragTargetPage, moved)
+                        }
                         true
                     } else {
                         false
@@ -263,12 +283,12 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         moved: Boolean,
     ) {
         if (proxy == null) {
-            original.visibility = View.VISIBLE
+            original.alpha = 1f
             return
         }
         if (!moved) {
             onDragEnd?.invoke(proxy)
-            original.visibility = View.VISIBLE
+            original.alpha = 1f
             showLongPressMenu(app, item, original)
             return
         }
@@ -280,7 +300,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         if (ok) {
             onDragCommitted?.invoke(targetPage)
         } else {
-            original.visibility = View.VISIBLE
+            original.alpha = 1f
             if (targetPage != pageIndex) {
                 // Dropped somewhere invalid after hovering to another page —
                 // land back on the page the drag actually started from
