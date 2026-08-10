@@ -133,6 +133,7 @@ class WorkspaceRepository(
         root.put("pageCount", workspace.pageCount)
         root.put("dock", JSONArray(workspace.dockComponentKeys))
         root.put("homeGrid", workspace.homeGrid.name)
+        root.put("defaultPage", workspace.defaultPage)
 
         val items = JSONArray()
         for (item in workspace.items) {
@@ -167,11 +168,13 @@ class WorkspaceRepository(
         val homeGrid = runCatching { HomeGridPreset.valueOf(root.optString("homeGrid", "")) }
             .getOrDefault(HomeGridPreset.FOUR_BY_SIX)
 
+        val pageCount = root.optInt("pageCount", 1)
         return Workspace(
-            pageCount = root.optInt("pageCount", 1),
+            pageCount = pageCount,
             items = items,
             dockComponentKeys = dock,
             homeGrid = homeGrid,
+            defaultPage = root.optInt("defaultPage", 0).coerceIn(0, maxOf(0, pageCount - 1)),
         )
     }
 

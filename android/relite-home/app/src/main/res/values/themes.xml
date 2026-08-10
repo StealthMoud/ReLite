@@ -33,4 +33,18 @@
         <item name="android:ellipsize">end</item>
         <item name="android:gravity">center</item>
     </style>
+
+    <!-- Section 112-117 (v0.5.0): the three primary Home edit-mode bottom actions. -->
+    <style name="EditModeAction">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingVertical">12dp</item>
+        <item name="android:textColor">@color/relite_text_primary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
 </resources>

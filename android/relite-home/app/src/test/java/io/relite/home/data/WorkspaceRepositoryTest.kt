@@ -301,4 +301,23 @@ class WorkspaceRepositoryTest {
 
         assertEquals(HomeGridPreset.FOUR_BY_SIX, repo.load().homeGrid)
     }
+
+    // --- defaultPage (sections 80/119, v0.5.0) ---
+
+    @Test
+    fun `defaultPage round-trips through save and load`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage)
+        repo.save(Workspace.empty(pageCount = 3).copy(defaultPage = 2))
+
+        assertEquals(2, repo.load().defaultPage)
+    }
+
+    @Test
+    fun `a stored defaultPage beyond the current pageCount is clamped on load`() {
+        val json = """{"schema": 3, "pageCount": 2, "dock": [], "items": [], "defaultPage": 99}"""
+        val repo = WorkspaceRepository(InMemoryStorage(json))
+
+        assertEquals(1, repo.load().defaultPage)
+    }
 }

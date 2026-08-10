@@ -18,4 +18,7 @@
     <dimen name="touch_target_min">48dp</dimen>
 
     <dimen name="edge_hover_zone_width">32dp</dimen>
+
+    <dimen name="edit_mode_chip_size">48dp</dimen>
+    <dimen name="edit_mode_chip_margin">12dp</dimen>
 </resources>

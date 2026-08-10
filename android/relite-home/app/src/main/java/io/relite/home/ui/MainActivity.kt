@@ -45,6 +45,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var drawerContainer: FragmentContainerView
     private lateinit var dragOverlay: DragOverlay
     private lateinit var pagerAdapter: HomePagerAdapter
+    private lateinit var editModeOverlay: View
+    private lateinit var editModePageStrip: android.widget.LinearLayout
+
+    private val wallpaperPickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
 
     // Any result (OK or CANCELED) may have changed the workspace — a
     // cancellation mid-flow can still have consumed/freed a widget id, and
@@ -63,6 +67,18 @@ class MainActivity : AppCompatActivity() {
         dock = findViewById(R.id.dock)
         drawerContainer = findViewById(R.id.drawer_container)
         dragOverlay = DragOverlay(findViewById<FrameLayout>(R.id.drag_overlay))
+        editModeOverlay = findViewById(R.id.edit_mode_overlay)
+        editModePageStrip = findViewById(R.id.edit_mode_page_strip)
+        editModeOverlay.setOnClickListener { exitEditMode() } // tap the scrim to exit
+        findViewById<View>(R.id.edit_mode_wallpaper).setOnClickListener {
+            wallpaperPickerLauncher.launch(Intent(Intent.ACTION_SET_WALLPAPER))
+        }
+        findViewById<View>(R.id.edit_mode_widgets).setOnClickListener {
+            widgetPickerLauncher.launch(WidgetPickerActivity.newIntent(this))
+        }
+        findViewById<View>(R.id.edit_mode_settings).setOnClickListener {
+            startActivity(Intent(this, io.relite.home.ui.settings.HomeSettingsActivity::class.java))
+        }
 
         // Section 17-20 (v0.4.0): the home screen draws edge-to-edge behind
         // the status/nav bars (it shows the wallpaper there), so every
@@ -87,6 +103,7 @@ class MainActivity : AppCompatActivity() {
             fragment.onFolderOpen = { folder -> openFolder(folder) }
             fragment.onWorkspaceChanged = { refreshWorkspace() }
             fragment.onAddWidgetRequested = { widgetPickerLauncher.launch(WidgetPickerActivity.newIntent(this)) }
+            fragment.onEditModeRequested = { enterEditMode() }
             fragment.onDragStart = { source -> dragOverlay.beginDrag(source) }
             fragment.onDragMove = { proxy, dx, dy -> dragOverlay.moveDrag(proxy, dx, dy) }
             fragment.onDragEnd = { proxy -> dragOverlay.endDrag(proxy) }
@@ -100,7 +117,11 @@ class MainActivity : AppCompatActivity() {
         }
         pager.adapter = pagerAdapter
 
-        refreshWorkspace()
+        // Section 80/119 (v0.5.0): the very first render opens on the
+        // persisted default page rather than always page 0 — every
+        // subsequent refreshWorkspace() call (edits, onResume) keeps
+        // defaulting to wherever the user currently is, per its own kdoc.
+        refreshWorkspace(app.workspaceController.current().defaultPage)
 
         drawerContainer.visibility = View.GONE
 
@@ -110,7 +131,9 @@ class MainActivity : AppCompatActivity() {
         // Activity.onBackPressed() means there's no super call to forget
         // and no ambiguity about what "not consuming" the event would do.
         onBackPressedDispatcher.addCallback(this) {
-            if (drawerContainer.visibility == View.VISIBLE) {
+            if (editModeOverlay.visibility == View.VISIBLE) {
+                exitEditMode()
+            } else if (drawerContainer.visibility == View.VISIBLE) {
                 hideAppDrawer()
             }
         }
@@ -159,6 +182,8 @@ class MainActivity : AppCompatActivity() {
 
         pagerAdapter.update(workspace.pageCount)
         pager.setCurrentItem(resolvedTargetPage, false)
+
+        if (editModeOverlay.visibility == View.VISIBLE) rebuildEditModePageStrip()
 
         val allApps = app.appRepository.loadAll().associateBy { it.componentKey }
         dock.bind(
@@ -287,6 +312,102 @@ class MainActivity : AppCompatActivity() {
         drawerContainer.visibility = View.GONE
     }
 
+    /**
+     * Section 112-119 (v0.5.0): replaces the previous plain AlertDialog on
+     * long-press-empty-Home. The pager scales down slightly (Samsung-like
+     * "workspace shrinks" cue) while the real overlay — page strip +
+     * Wallpaper and style / Widgets / Home screen settings — sits on top.
+     */
+    private fun enterEditMode() {
+        rebuildEditModePageStrip()
+        editModeOverlay.visibility = View.VISIBLE
+        pager.animate().scaleX(EDIT_MODE_SCALE).scaleY(EDIT_MODE_SCALE).setDuration(EDIT_MODE_ANIM_MS).start()
+        dock.animate().scaleX(EDIT_MODE_SCALE).scaleY(EDIT_MODE_SCALE).setDuration(EDIT_MODE_ANIM_MS).start()
+    }
+
+    private fun exitEditMode() {
+        editModeOverlay.visibility = View.GONE
+        pager.animate().scaleX(1f).scaleY(1f).setDuration(EDIT_MODE_ANIM_MS).start()
+        dock.animate().scaleX(1f).scaleY(1f).setDuration(EDIT_MODE_ANIM_MS).start()
+    }
+
+    /**
+     * Section 80/119: one chip per page — tap jumps there, long-press offers
+     * "Set as default page" / "Remove this empty page", a trailing "+" chip
+     * adds a page. Real page thumbnails (rendered page content, not just a
+     * number) are not implemented this pass — see CHANGELOG's Known gaps.
+     */
+    private fun rebuildEditModePageStrip() {
+        editModePageStrip.removeAllViews()
+        val workspace = app.workspaceController.current()
+        val chipSize = resources.getDimensionPixelSize(R.dimen.edit_mode_chip_size)
+        val chipMargin = resources.getDimensionPixelSize(R.dimen.edit_mode_chip_margin)
+
+        for (page in 0 until workspace.pageCount) {
+            val chip = android.widget.TextView(this).apply {
+                text = getString(R.string.edit_mode_page_number, page + 1)
+                gravity = android.view.Gravity.CENTER
+                setTextColor(resources.getColor(R.color.relite_text_primary, theme))
+                setBackgroundResource(if (page == workspace.defaultPage) R.drawable.bg_page_chip_default else R.drawable.bg_page_chip)
+                layoutParams = android.widget.LinearLayout.LayoutParams(chipSize, chipSize).apply {
+                    marginEnd = chipMargin
+                }
+                setOnClickListener {
+                    pager.setCurrentItem(page, true)
+                    exitEditMode()
+                }
+                setOnLongClickListener {
+                    showPageChipMenu(page)
+                    true
+                }
+            }
+            editModePageStrip.addView(chip)
+        }
+
+        val addChip = android.widget.TextView(this).apply {
+            text = "+"
+            gravity = android.view.Gravity.CENTER
+            setTextColor(resources.getColor(R.color.relite_text_primary, theme))
+            setBackgroundResource(R.drawable.bg_page_chip)
+            layoutParams = android.widget.LinearLayout.LayoutParams(chipSize, chipSize)
+            contentDescription = getString(R.string.edit_mode_add_page)
+            setOnClickListener {
+                app.workspaceController.addPage()
+                refreshWorkspace()
+            }
+        }
+        editModePageStrip.addView(addChip)
+    }
+
+    private fun showPageChipMenu(page: Int) {
+        val canRemove = page > 0 &&
+            app.workspaceController.current().items.none { it.position.page == page }
+        val options = buildList {
+            add(getString(R.string.edit_mode_set_default_page))
+            if (canRemove) add(getString(R.string.edit_mode_remove_page))
+        }
+        android.app.AlertDialog.Builder(this)
+            .setItems(options.toTypedArray()) { _, which ->
+                when (options[which]) {
+                    getString(R.string.edit_mode_set_default_page) -> {
+                        app.workspaceController.setDefaultPage(page)
+                        android.widget.Toast.makeText(this, R.string.edit_mode_default_page_set, android.widget.Toast.LENGTH_SHORT).show()
+                        refreshWorkspace()
+                    }
+                    getString(R.string.edit_mode_remove_page) -> {
+                        if (app.workspaceController.removeEmptyPage(page)) {
+                            android.widget.Toast.makeText(this, R.string.edit_mode_page_removed, android.widget.Toast.LENGTH_SHORT).show()
+                            refreshWorkspace()
+                        } else {
+                            android.widget.Toast.makeText(this, R.string.edit_mode_page_not_removable, android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     // No onDestroy() override here on purpose: appRepository is owned by
     // ReliteHomeApplication for the process's entire lifetime, not by any
     // one Activity instance (section 11, v0.2.0). Activity destruction can
@@ -296,4 +417,11 @@ class MainActivity : AppCompatActivity() {
     // the LauncherApps callback on the first recreation and silently
     // stopped the drawer from ever refreshing again for the rest of the
     // process's life.
+
+    private companion object {
+        // Section 113: "workspace scales down slightly" — subtle, not a
+        // dramatic zoom-out; section 68's ~100-500ms motion baseline.
+        const val EDIT_MODE_SCALE = 0.92f
+        const val EDIT_MODE_ANIM_MS = 200L
+    }
 }

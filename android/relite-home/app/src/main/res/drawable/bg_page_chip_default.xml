@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same as bg_page_chip but with an accent ring, marking the default page in Home edit mode. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="@color/relite_dock_background" />
+    <stroke android:width="2dp" android:color="@color/relite_primary" />
+</shape>

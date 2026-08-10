@@ -28,6 +28,15 @@
     <string name="action_sort">Sort</string>
     <string name="sort_custom_order">Custom order</string>
     <string name="sort_alphabetical_order">Alphabetical order</string>
+    <string name="action_wallpaper_and_style">Wallpaper and style</string>
+    <string name="edit_mode_done">Done</string>
+    <string name="edit_mode_add_page">Add page</string>
+    <string name="edit_mode_page_number">%1$d</string>
+    <string name="edit_mode_set_default_page">Set as default page</string>
+    <string name="edit_mode_default_page_set">Default page set</string>
+    <string name="edit_mode_remove_page">Remove this empty page</string>
+    <string name="edit_mode_page_removed">Page removed</string>
+    <string name="edit_mode_page_not_removable">Only an empty page (not the first) can be removed</string>
     <string name="action_move_to_page">Move to page…</string>
     <string name="new_page_option">New page</string>
     <string name="page_label">Page %1$d</string>

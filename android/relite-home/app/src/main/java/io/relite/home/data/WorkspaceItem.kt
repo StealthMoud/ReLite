@@ -58,6 +58,11 @@ data class Workspace(
     val items: List<WorkspaceItem>,
     val dockComponentKeys: List<String>,
     val homeGrid: HomeGridPreset = HomeGridPreset.FOUR_BY_SIX,
+    // Section 80/119 (v0.5.0): which page Home opens on first launch —
+    // set from the Home edit-mode page strip. Clamped to a valid page
+    // index by WorkspaceController.setDefaultPage(); page removal also
+    // keeps it valid, see WorkspaceController.removeEmptyPage.
+    val defaultPage: Int = 0,
 ) {
     companion object {
         fun empty(pageCount: Int = 1): Workspace = Workspace(pageCount, emptyList(), emptyList())

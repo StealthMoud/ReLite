@@ -751,6 +751,38 @@ class WorkspaceControllerTest {
         assertTrue(controller.current().pageCount > 1) // overflow items landed on new pages
     }
 
+    // --- setDefaultPage / removeEmptyPage interaction (sections 80/119, v0.5.0) ---
+
+    @Test
+    fun `setDefaultPage persists a valid page`() {
+        controller.addPage()
+        assertTrue(controller.setDefaultPage(1))
+        assertEquals(1, controller.current().defaultPage)
+    }
+
+    @Test
+    fun `setDefaultPage rejects an out-of-range page`() {
+        assertFalse(controller.setDefaultPage(5))
+        assertEquals(0, controller.current().defaultPage)
+    }
+
+    @Test
+    fun `removeEmptyPage resets defaultPage to 0 when the removed page was the default`() {
+        controller.addPage()
+        controller.setDefaultPage(1)
+        assertTrue(controller.removeEmptyPage(1))
+        assertEquals(0, controller.current().defaultPage)
+    }
+
+    @Test
+    fun `removeEmptyPage shifts defaultPage down when a page before it is removed`() {
+        controller.addPage()
+        controller.addPage()
+        controller.setDefaultPage(2)
+        assertTrue(controller.removeEmptyPage(1))
+        assertEquals(1, controller.current().defaultPage)
+    }
+
     private companion object {
         const val TEST_DOCK_CAPACITY = 5
     }

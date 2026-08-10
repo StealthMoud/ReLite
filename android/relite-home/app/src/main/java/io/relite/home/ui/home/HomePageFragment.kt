@@ -37,6 +37,9 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     var onWorkspaceChanged: (() -> Unit)? = null
     var onAddWidgetRequested: (() -> Unit)? = null
 
+    /** Section 112 (v0.5.0): long-pressing empty Home space now enters the real edit-mode surface, not a plain dialog. */
+    var onEditModeRequested: (() -> Unit)? = null
+
     // Section 4-6 (v0.4.0 cross-page drag): the dragged icon is rendered as
     // a proxy in a full-screen overlay owned by MainActivity, not as this
     // page's own child view, because ViewPager2 may swap this fragment's
@@ -73,10 +76,9 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             grid.addCell(cellView, item.position.column, item.position.row, span.first, span.second)
         }
 
-        // Section 20-21: long-pressing empty grid space (not consumed by any
-        // item's own listener) offers page management — the required minimum
-        // UI for the addPage/removeEmptyPage controller methods.
-        grid.setOnLongClickListener { showPageManagementMenu(app, pageItems.isEmpty()); true }
+        // Section 20-21/112 (v0.5.0): long-pressing empty grid space (not
+        // consumed by any item's own listener) enters Home edit mode.
+        grid.setOnLongClickListener { onEditModeRequested?.invoke(); true }
 
         // Section 41 (v0.5.0): keep the process-wide last-known grid metrics
         // fresh on every measure pass (rotation, grid-preset change, first
@@ -518,36 +520,6 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                     android.widget.Toast.makeText(requireContext(), R.string.move_no_room, android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     onWorkspaceChanged?.invoke()
-                }
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    /** Sections 20-21: minimal page management, reached from a long press on empty grid space. */
-    private fun showPageManagementMenu(app: ReliteHomeApplication, pageIsEmpty: Boolean) {
-        val canRemove = pageIsEmpty && pageIndex > 0
-        val options = buildList {
-            add(getString(R.string.action_widgets))
-            add(getString(R.string.action_add_page))
-            if (canRemove) add(getString(R.string.action_remove_page))
-            add(getString(R.string.action_home_settings))
-        }
-        android.app.AlertDialog.Builder(requireContext())
-            .setItems(options.toTypedArray()) { _, which ->
-                when (options[which]) {
-                    getString(R.string.action_widgets) -> onAddWidgetRequested?.invoke()
-                    getString(R.string.action_add_page) -> {
-                        app.workspaceController.addPage()
-                        onWorkspaceChanged?.invoke()
-                    }
-                    getString(R.string.action_remove_page) -> {
-                        app.workspaceController.removeEmptyPage(pageIndex)
-                        onWorkspaceChanged?.invoke()
-                    }
-                    getString(R.string.action_home_settings) -> startActivity(
-                        Intent(requireContext(), io.relite.home.ui.settings.HomeSettingsActivity::class.java),
-                    )
                 }
             }
             .setNegativeButton(R.string.cancel, null)

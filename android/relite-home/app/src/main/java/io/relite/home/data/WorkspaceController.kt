@@ -140,8 +140,19 @@ class WorkspaceController(
                     item
                 }
             }
-            ws.copy(pageCount = ws.pageCount - 1, items = shifted)
+            val newDefaultPage = when {
+                ws.defaultPage > page -> ws.defaultPage - 1
+                ws.defaultPage == page -> 0
+                else -> ws.defaultPage
+            }
+            ws.copy(pageCount = ws.pageCount - 1, items = shifted, defaultPage = newDefaultPage)
         }
+    }
+
+    /** Section 80/119 (v0.5.0): which page Home opens on first launch — set from the edit-mode page strip. */
+    fun setDefaultPage(page: Int): Boolean {
+        if (page < 0 || page >= workspace.pageCount) return false
+        return mutate { it.copy(defaultPage = page) }
     }
 
     /**

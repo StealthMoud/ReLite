@@ -65,4 +65,65 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Section 112-119 (v0.5.0): the Home edit-mode surface — replaces the
+         previous plain AlertDialog on long-press-empty-Home. Sits above
+         everything else; the workspace itself scales down slightly behind
+         it (MainActivity.enterEditMode) rather than living inside this
+         overlay, so the real pager/dock keep rendering normally. -->
+    <FrameLayout
+        android:id="@+id/edit_mode_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="#66000000"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:layout_marginTop="48dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/edit_mode_page_strip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingHorizontal="16dp"
+                android:gravity="center_vertical" />
+        </HorizontalScrollView>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginBottom="32dp"
+            android:background="@drawable/bg_dock"
+            android:orientation="horizontal"
+            android:paddingVertical="8dp">
+
+            <TextView
+                android:id="@+id/edit_mode_wallpaper"
+                style="@style/EditModeAction"
+                android:text="@string/action_wallpaper_and_style" />
+
+            <TextView
+                android:id="@+id/edit_mode_widgets"
+                style="@style/EditModeAction"
+                android:text="@string/action_widgets" />
+
+            <TextView
+                android:id="@+id/edit_mode_settings"
+                style="@style/EditModeAction"
+                android:text="@string/action_home_settings" />
+        </LinearLayout>
+    </FrameLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>
