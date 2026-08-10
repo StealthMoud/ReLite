@@ -82,7 +82,7 @@ class WidgetPickerActivity : AppCompatActivity() {
         val adapter = WidgetProviderAdapter(packageManager) { provider -> onProviderSelected(provider) }
         recycler.layoutManager = LinearLayoutManager(this@WidgetPickerActivity)
         recycler.adapter = adapter
-        adapter.submitList(providers)
+        adapter.submitList(buildGroupedRows(providers))
 
         findViewById<View>(R.id.empty_state_close).setOnClickListener { finish() }
 
@@ -99,6 +99,30 @@ class WidgetPickerActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         outState.putInt(STATE_PENDING_WIDGET_ID, pendingAppWidgetId)
         outState.putString(STATE_PENDING_PROVIDER, pendingProviderComponent?.flattenToString())
+    }
+
+    /**
+     * Section 10 (v0.5.0 completion pass): groups an already-label-sorted
+     * provider list by source app — one [WidgetPickerRow.AppHeader] per
+     * distinct package, in the order its first (alphabetically-first)
+     * widget appears, followed by every one of that app's widgets as
+     * [WidgetPickerRow.ProviderCard]s in the same order they were sorted.
+     * `LinkedHashMap` preserves first-insertion order across its keys,
+     * which is exactly "app order = its first widget's alphabetical rank".
+     */
+    private fun buildGroupedRows(providers: List<AppWidgetProviderInfo>): List<WidgetPickerRow> {
+        val byPackage = LinkedHashMap<String, MutableList<AppWidgetProviderInfo>>()
+        providers.forEach { provider ->
+            byPackage.getOrPut(provider.provider.packageName) { mutableListOf() }.add(provider)
+        }
+        return byPackage.flatMap { (packageName, providersForApp) ->
+            val appLabel = runCatching {
+                packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
+            }.getOrDefault(packageName)
+            val appIcon = runCatching { packageManager.getApplicationIcon(packageName) }.getOrNull()
+            listOf(WidgetPickerRow.AppHeader(packageName, appLabel, appIcon)) +
+                providersForApp.map { WidgetPickerRow.ProviderCard(it) }
+        }
     }
 
     private fun onProviderSelected(provider: AppWidgetProviderInfo) {

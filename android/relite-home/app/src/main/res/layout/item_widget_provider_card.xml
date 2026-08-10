@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Section 10 (v0.5.0 completion pass): a real preview card — a rendered
+     provider preview image (or an icon+dimension fallback when no preview
+     exists, see WidgetPickerAdapter.loadPreviewDrawable's kdoc) instead of
+     the old flat icon+label row. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_dock"
+    android:padding="12dp"
+    android:layout_marginHorizontal="8dp"
+    android:layout_marginBottom="12dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:minHeight="@dimen/touch_target_min">
+
+    <ImageView
+        android:id="@+id/provider_preview"
+        android:layout_width="match_parent"
+        android:layout_height="96dp"
+        android:scaleType="fitCenter"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:id="@+id/provider_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="@color/relite_text_primary"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/provider_dimensions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/relite_text_secondary"
+        android:textSize="12sp" />
+
+</LinearLayout>
