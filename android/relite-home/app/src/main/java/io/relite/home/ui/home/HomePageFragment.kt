@@ -4,6 +4,8 @@ import android.appwidget.AppWidgetHostView
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.Menu
@@ -35,9 +37,26 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
     var onWorkspaceChanged: (() -> Unit)? = null
     var onAddWidgetRequested: (() -> Unit)? = null
 
+    // Section 4-6 (v0.4.0 cross-page drag): the dragged icon is rendered as
+    // a proxy in a full-screen overlay owned by MainActivity, not as this
+    // page's own child view, because ViewPager2 may swap this fragment's
+    // page out from under the drag mid-gesture. onDragEdgeHover switches
+    // the pager's current page and returns whichever page ends up current;
+    // onDragCommitted replaces the plain onWorkspaceChanged call for a
+    // successful drop so MainActivity can restore the pager to the page the
+    // item was actually dropped on (a full adapter rebuild would otherwise
+    // reset the scroll position to page 0).
+    var onDragStart: ((source: View) -> View)? = null
+    var onDragMove: ((proxy: View, dx: Float, dy: Float) -> Unit)? = null
+    var onDragEnd: ((proxy: View) -> Unit)? = null
+    var onDragEdgeHover: ((direction: Int) -> Int)? = null
+    var onDragCommitted: ((page: Int) -> Unit)? = null
+
     private lateinit var grid: WorkspaceGridLayout
     private var pageIndex: Int = 0
     private val touchSlop by lazy { ViewConfiguration.get(requireContext()).scaledTouchSlop }
+    private val edgeHoverHandler = Handler(Looper.getMainLooper())
+    private var edgeHoverRunnable: Runnable? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         pageIndex = requireArguments().getInt(ARG_PAGE_INDEX)
@@ -137,13 +156,17 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         var dragArmed = false
         var downRawX = 0f
         var downRawY = 0f
+        var proxy: View? = null
+        var dragTargetPage = pageIndex
 
         cellView.setOnLongClickListener {
             dragArmed = true
-            cellView.animate().scaleX(1.08f).scaleY(1.08f).alpha(0.85f).setDuration(120).start()
+            dragTargetPage = pageIndex
+            proxy = onDragStart?.invoke(cellView)
+            cellView.visibility = View.INVISIBLE
             true
         }
-        cellView.setOnTouchListener { v, event ->
+        cellView.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     dragArmed = false
@@ -153,9 +176,14 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (dragArmed) {
-                        v.translationX = event.rawX - downRawX
-                        v.translationY = event.rawY - downRawY
-                        updateDropFeedback(app, item, v)
+                        val dx = event.rawX - downRawX
+                        val dy = event.rawY - downRawY
+                        val currentProxy = proxy
+                        if (currentProxy != null) {
+                            onDragMove?.invoke(currentProxy, dx, dy)
+                            updateDropFeedback(app, item, currentProxy, dragTargetPage)
+                            updateEdgeHover(event.rawX) { newPage -> dragTargetPage = newPage }
+                        }
                         true
                     } else {
                         false
@@ -164,7 +192,10 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (dragArmed) {
                         dragArmed = false
-                        finishDrag(app, item, v)
+                        cancelEdgeHoverTimer()
+                        val moved = hypot(event.rawX - downRawX, event.rawY - downRawY) > touchSlop
+                        finishDrag(app, item, cellView, proxy, dragTargetPage, moved)
+                        proxy = null
                         true
                     } else {
                         false
@@ -175,44 +206,88 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         }
     }
 
-    private fun targetCellFor(v: View): Pair<Int, Int>? {
+    /** Section 2-3: arms/cancels a one-shot debounce timer while hovering an edge zone — never a continuous poll (section 97). */
+    private fun updateEdgeHover(rawX: Float, onPageChanged: (Int) -> Unit) {
+        val screenWidth = resources.displayMetrics.widthPixels
+        val edgeZonePx = resources.getDimension(R.dimen.edge_hover_zone_width)
+        val direction = EdgeHover.directionFor(rawX, screenWidth, edgeZonePx)
+        if (direction == 0) {
+            cancelEdgeHoverTimer()
+            return
+        }
+        if (edgeHoverRunnable != null) return // already armed for this hover
+        val runnable = Runnable {
+            edgeHoverRunnable = null
+            val newPage = onDragEdgeHover?.invoke(direction)
+            if (newPage != null) onPageChanged(newPage)
+        }
+        edgeHoverRunnable = runnable
+        edgeHoverHandler.postDelayed(runnable, EDGE_HOVER_DELAY_MS)
+    }
+
+    private fun cancelEdgeHoverTimer() {
+        edgeHoverRunnable?.let { edgeHoverHandler.removeCallbacks(it) }
+        edgeHoverRunnable = null
+    }
+
+    override fun onPause() {
+        super.onPause()
+        cancelEdgeHoverTimer()
+    }
+
+    private fun targetCellFor(proxy: View): Pair<Int, Int>? {
         val gridLocation = IntArray(2)
         grid.getLocationOnScreen(gridLocation)
         val viewLocation = IntArray(2)
-        v.getLocationOnScreen(viewLocation)
-        // Use the dragged view's current center, not the raw touch point, so
-        // a drop is judged by where the icon visually is, not the finger.
-        val centerX = viewLocation[0] + v.width / 2f
-        val centerY = viewLocation[1] + v.height / 2f
+        proxy.getLocationOnScreen(viewLocation)
+        // Use the dragged proxy's current center, not the raw touch point,
+        // so a drop is judged by where the icon visually is, not the finger.
+        val centerX = viewLocation[0] + proxy.width / 2f
+        val centerY = viewLocation[1] + proxy.height / 2f
         return grid.cellAt(centerX - gridLocation[0], centerY - gridLocation[1])
     }
 
-    private fun updateDropFeedback(app: ReliteHomeApplication, item: WorkspaceItem, v: View) {
-        val cell = targetCellFor(v)
+    private fun updateDropFeedback(app: ReliteHomeApplication, item: WorkspaceItem, proxy: View, targetPage: Int) {
+        val cell = targetCellFor(proxy)
         val valid = cell != null &&
-            app.workspaceController.canMoveTo(item.id, GridPosition(pageIndex, cell.first, cell.second))
-        v.alpha = if (valid) 0.85f else 0.4f
+            app.workspaceController.canMoveTo(item.id, GridPosition(targetPage, cell.first, cell.second))
+        proxy.alpha = if (valid) 0.9f else 0.4f
     }
 
-    private fun finishDrag(app: ReliteHomeApplication, item: WorkspaceItem, v: View) {
-        v.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
-        val moved = hypot(v.translationX, v.translationY) > touchSlop
+    private fun finishDrag(
+        app: ReliteHomeApplication,
+        item: WorkspaceItem,
+        original: View,
+        proxy: View?,
+        targetPage: Int,
+        moved: Boolean,
+    ) {
+        if (proxy == null) {
+            original.visibility = View.VISIBLE
+            return
+        }
         if (!moved) {
-            v.translationX = 0f
-            v.translationY = 0f
-            v.alpha = 1f
-            showLongPressMenu(app, item, v)
+            onDragEnd?.invoke(proxy)
+            original.visibility = View.VISIBLE
+            showLongPressMenu(app, item, original)
             return
         }
 
-        val cell = targetCellFor(v)
-        val target = cell?.let { GridPosition(pageIndex, it.first, it.second) }
+        val cell = targetCellFor(proxy)
+        val target = cell?.let { GridPosition(targetPage, it.first, it.second) }
         val ok = target != null && app.workspaceController.moveItem(item.id, target)
-        v.alpha = 1f
+        onDragEnd?.invoke(proxy)
         if (ok) {
-            onWorkspaceChanged?.invoke()
+            onDragCommitted?.invoke(targetPage)
         } else {
-            v.animate().translationX(0f).translationY(0f).setDuration(150).start()
+            original.visibility = View.VISIBLE
+            if (targetPage != pageIndex) {
+                // Dropped somewhere invalid after hovering to another page —
+                // land back on the page the drag actually started from
+                // rather than stranding the user on a page with nothing to
+                // show for the failed drag.
+                onDragCommitted?.invoke(pageIndex)
+            }
         }
     }
 
@@ -397,6 +472,11 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         private const val MENU_ID_ADD_TO_FOLDER = 4
         private const val MENU_ID_MOVE_TO_PAGE = 5
         private const val MENU_ID_RESIZE_WIDGET = 6
+
+        // Section 2: long enough that grazing the edge mid-drag doesn't
+        // accidentally flip a page, short enough to feel responsive when
+        // the user actually means to hover there.
+        private const val EDGE_HOVER_DELAY_MS = 650L
 
         fun newInstance(pageIndex: Int): HomePageFragment = HomePageFragment().apply {
             arguments = Bundle().apply { putInt(ARG_PAGE_INDEX, pageIndex) }

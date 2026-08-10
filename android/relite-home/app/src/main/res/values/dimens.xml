@@ -16,4 +16,6 @@
     <dimen name="folder_padding">20dp</dimen>
 
     <dimen name="touch_target_min">48dp</dimen>
+
+    <dimen name="edge_hover_zone_width">32dp</dimen>
 </resources>

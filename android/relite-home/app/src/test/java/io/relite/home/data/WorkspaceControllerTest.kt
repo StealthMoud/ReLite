@@ -93,6 +93,71 @@ class WorkspaceControllerTest {
         assertFalse(controller.moveItem("does-not-exist", GridPosition(0, 0, 0)))
     }
 
+    // --- cross-page moveItem (sections 6-7, v0.4.0 hover drag) ---
+
+    @Test
+    fun `moveItem relocates an item from page 0 to page 1`() {
+        controller.addPage()
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+
+        val moved = controller.moveItem(id, GridPosition(1, 2, 2))
+
+        assertTrue(moved)
+        assertEquals(GridPosition(1, 2, 2), controller.current().items.single().position)
+    }
+
+    @Test
+    fun `moveItem relocates an item from page 1 back to page 0`() {
+        controller.addPage()
+        val id = controller.addApp("io.relite.a/Main", GridPosition(1, 0, 0))!!
+
+        val moved = controller.moveItem(id, GridPosition(0, 3, 3))
+
+        assertTrue(moved)
+        assertEquals(GridPosition(0, 3, 3), controller.current().items.single().position)
+    }
+
+    @Test
+    fun `moveItem to another page fails when the destination rectangle is occupied there, leaving the item on its original page`() {
+        controller.addPage()
+        controller.addApp("io.relite.blocker/Main", GridPosition(1, 0, 0))
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+
+        val moved = controller.moveItem(id, GridPosition(1, 0, 0))
+
+        assertFalse(moved)
+        assertEquals(GridPosition(0, 0, 0), controller.current().items.first { it.id == id }.position)
+    }
+
+    @Test
+    fun `moveItem refuses a cross-page destination when the widget rectangle would not fit there`() {
+        controller.addPage()
+        val widgetId = "w1"
+        val workspace = controller.current().copy(
+            items = listOf(
+                WorkspaceItem.WidgetIcon(
+                    widgetId, GridPosition(0, 0, 0), appWidgetId = 1, spanColumns = 2, spanRows = 2,
+                    providerComponent = "io.relite.widgets/Clock",
+                ),
+            ),
+        )
+        controller.replaceWorkspace(workspace)
+        controller.addApp("io.relite.blocker/Main", GridPosition(1, 1, 1))
+
+        // The widget's 2x2 rectangle at (0,0) on page 1 would overlap the blocker at (1,1).
+        assertFalse(controller.moveItem(widgetId, GridPosition(1, 0, 0)))
+        assertFalse(controller.canMoveTo(widgetId, GridPosition(1, 0, 0)))
+    }
+
+    @Test
+    fun `canMoveTo cross-page reflects a free destination without mutating state`() {
+        controller.addPage()
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
+
+        assertTrue(controller.canMoveTo(id, GridPosition(1, 1, 1)))
+        assertEquals(GridPosition(0, 0, 0), controller.current().items.single().position) // unchanged
+    }
+
     // --- canMoveTo ---
 
     @Test

@@ -17,11 +17,13 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.FragmentContainerView
 import androidx.viewpager2.widget.ViewPager2
+import android.widget.FrameLayout
 import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
 import io.relite.home.data.WorkspaceItem
 import io.relite.home.ui.drawer.AppDrawerFragment
 import io.relite.home.ui.folder.FolderSheetDialog
+import io.relite.home.ui.home.DragOverlay
 import io.relite.home.ui.home.HomePagerAdapter
 import io.relite.home.ui.home.PageIndicatorView
 import io.relite.home.ui.home.WorkspaceDockView
@@ -40,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pageIndicator: PageIndicatorView
     private lateinit var dock: WorkspaceDockView
     private lateinit var drawerContainer: FragmentContainerView
+    private lateinit var dragOverlay: DragOverlay
 
     // Any result (OK or CANCELED) may have changed the workspace — a
     // cancellation mid-flow can still have consumed/freed a widget id, and
@@ -57,6 +60,7 @@ class MainActivity : AppCompatActivity() {
         pageIndicator = findViewById(R.id.page_indicator)
         dock = findViewById(R.id.dock)
         drawerContainer = findViewById(R.id.drawer_container)
+        dragOverlay = DragOverlay(findViewById<FrameLayout>(R.id.drag_overlay))
 
         // Section 17-20 (v0.4.0): the home screen draws edge-to-edge behind
         // the status/nav bars (it shows the wallpaper there), so every
@@ -117,17 +121,37 @@ class MainActivity : AppCompatActivity() {
      * way to keep every page's RecyclerView in sync with the single
      * source of truth without a more elaborate observer/diffing layer
      * that this launcher's scope doesn't yet justify.
+     *
+     * Replacing `pager.adapter` resets ViewPager2's scroll position to 0
+     * unless told otherwise, which would silently kick the user back to
+     * page 0 after every single edit (add an app, pin to dock, drop a
+     * cross-page drag on page 2...) — [targetPage] defaults to wherever
+     * the user currently is so that doesn't happen; a caller that just
+     * moved something to a specific page (the cross-page drag drop) can
+     * pass that page explicitly instead.
      */
-    private fun refreshWorkspace() {
+    private fun refreshWorkspace(targetPage: Int? = null) {
         val workspace = app.workspaceController.current()
         pageIndicator.pageCount = workspace.pageCount
+        val resolvedTargetPage = (targetPage ?: pager.currentItem).coerceIn(0, workspace.pageCount - 1)
 
         pager.adapter = HomePagerAdapter(this, workspace.pageCount) { fragment ->
             fragment.onAppLaunch = { componentKey -> launchApp(componentKey) }
             fragment.onFolderOpen = { folder -> openFolder(folder) }
             fragment.onWorkspaceChanged = { refreshWorkspace() }
             fragment.onAddWidgetRequested = { widgetPickerLauncher.launch(WidgetPickerActivity.newIntent(this)) }
+            fragment.onDragStart = { source -> dragOverlay.beginDrag(source) }
+            fragment.onDragMove = { proxy, dx, dy -> dragOverlay.moveDrag(proxy, dx, dy) }
+            fragment.onDragEnd = { proxy -> dragOverlay.endDrag(proxy) }
+            fragment.onDragEdgeHover = { direction ->
+                val itemCount = pager.adapter?.itemCount ?: 1
+                val target = (pager.currentItem + direction).coerceIn(0, itemCount - 1)
+                if (target != pager.currentItem) pager.setCurrentItem(target, true)
+                pager.currentItem
+            }
+            fragment.onDragCommitted = { page -> refreshWorkspace(page) }
         }
+        pager.setCurrentItem(resolvedTargetPage, false)
 
         val allApps = app.appRepository.loadAll().associateBy { it.componentKey }
         dock.bind(

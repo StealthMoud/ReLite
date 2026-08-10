@@ -50,4 +50,19 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Section 4-6: floating layer for the cross-page drag proxy — sits
+         above the pager so a dragged icon keeps rendering while ViewPager2
+         swaps the page fragment beneath it. Never intercepts touches on
+         its own; only ever holds children while a drag is in progress. -->
+    <FrameLayout
+        android:id="@+id/drag_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
