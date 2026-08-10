@@ -115,7 +115,15 @@ class WidgetPickerActivity : AppCompatActivity() {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider)
             }
-            bindLauncher.launch(bindIntent)
+            // Section 9 (v0.5.0 completion pass): a provider that vanishes
+            // (uninstalled) between being listed and being tapped, or a
+            // device/OEM build with no bind-permission UI at all to launch,
+            // must fall back to a clean cancel rather than crash the whole
+            // Activity out from under the user with an uncaught
+            // ActivityNotFoundException/SecurityException — completing the
+            // cancellation-matrix branch the master plan calls "provider
+            // missing".
+            runCatching { bindLauncher.launch(bindIntent) }.onFailure { cancelPending() }
         }
     }
 
@@ -129,7 +137,10 @@ class WidgetPickerActivity : AppCompatActivity() {
             component = configure
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         }
-        configureLauncher.launch(configureIntent)
+        // Same "provider vanished/no handler" defense as onProviderSelected —
+        // a configure Activity that can no longer be resolved must cancel
+        // cleanly, not crash.
+        runCatching { configureLauncher.launch(configureIntent) }.onFailure { cancelPending() }
     }
 
     /**
