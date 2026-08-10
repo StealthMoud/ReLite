@@ -100,6 +100,16 @@ class WorkspaceGridLayout @JvmOverloads constructor(
         return android.graphics.Rect(left, top, left + cellWidth * spanColumns, top + cellHeight * spanRows)
     }
 
+    /** Section 21 (v0.5.0 completion pass): the child view whose origin cell is exactly (column, row), if any — used to highlight a drag-onto-app folder-create target. */
+    fun viewAt(column: Int, row: Int): View? {
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            val lp = child.layoutParams as LayoutParams
+            if (lp.column == column && lp.row == row) return child
+        }
+        return null
+    }
+
     /** Converts a raw touch point (in this view's coordinates) into the grid cell under it, or null if outside the grid. */
     fun cellAt(x: Float, y: Float): Pair<Int, Int>? {
         if (cellWidth <= 0 || cellHeight <= 0) return null

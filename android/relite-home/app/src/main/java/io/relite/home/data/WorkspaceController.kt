@@ -353,6 +353,38 @@ class WorkspaceController(
         return if (ok) id else null
     }
 
+    /**
+     * Section 19-22 (v0.5.0 completion pass): drag-app-onto-app folder
+     * creation — atomically removes both standalone [WorkspaceItem.AppIcon]s
+     * and replaces the target's cell with a brand-new folder containing
+     * both, in one [mutate] so a save failure can never strand a duplicated
+     * or a vanished app. The new folder keeps the *target's* grid position
+     * (where the user actually dropped), not the source's.
+     */
+    fun createFolderFromApps(sourceItemId: String, targetItemId: String): String? {
+        if (sourceItemId == targetItemId) return null
+        val source = workspace.items.find { it.id == sourceItemId } as? WorkspaceItem.AppIcon ?: return null
+        val target = workspace.items.find { it.id == targetItemId } as? WorkspaceItem.AppIcon ?: return null
+        val id = newId()
+        val ok = mutate { ws ->
+            ws.copy(
+                items = ws.items.mapNotNull { current ->
+                    when (current.id) {
+                        sourceItemId -> null
+                        targetItemId -> WorkspaceItem.FolderIcon(
+                            id,
+                            target.position,
+                            DEFAULT_FOLDER_LABEL,
+                            listOf(target.componentKey, source.componentKey),
+                        )
+                        else -> current
+                    }
+                },
+            )
+        }
+        return if (ok) id else null
+    }
+
     // --- widgets ---
 
     /** Section 34 (v0.4.1): same one-mutate guarantee as [addApp] — see its doc comment. */
@@ -556,5 +588,11 @@ class WorkspaceController(
 
     companion object {
         private const val MAX_AUTO_PAGES = 20
+
+        // Matches R.string.new_folder_label — this class is deliberately
+        // Context-free (pure Kotlin, unit-testable without Android), so it
+        // can't read the string resource itself; the UI layer already
+        // renames a freshly drag-created folder immediately in most flows.
+        private const val DEFAULT_FOLDER_LABEL = "New folder"
     }
 }

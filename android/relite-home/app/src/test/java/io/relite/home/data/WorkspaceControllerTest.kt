@@ -783,6 +783,57 @@ class WorkspaceControllerTest {
         assertEquals(1, controller.current().defaultPage)
     }
 
+    // --- createFolderFromApps (sections 19-22, v0.5.0 completion pass) ---
+
+    @Test
+    fun `createFolderFromApps replaces both apps with a folder at the target's position`() {
+        val sourceId = controller.addApp("io.relite.a/Main")!!
+        val targetId = controller.addApp("io.relite.b/Main")!!
+        val targetPosition = controller.current().items.single { it.id == targetId }.position
+
+        val folderId = controller.createFolderFromApps(sourceId, targetId)
+
+        assertNotNull(folderId)
+        val items = controller.current().items
+        assertTrue(items.none { it.id == sourceId })
+        assertTrue(items.none { it.id == targetId })
+        val folder = items.single { it.id == folderId } as WorkspaceItem.FolderIcon
+        assertEquals(targetPosition, folder.position)
+        assertEquals(setOf("io.relite.a/Main", "io.relite.b/Main"), folder.itemComponentKeys.toSet())
+    }
+
+    @Test
+    fun `createFolderFromApps rejects the same item as source and target`() {
+        val id = controller.addApp("io.relite.a/Main")!!
+        assertNull(controller.createFolderFromApps(id, id))
+        assertEquals(1, controller.current().items.size)
+    }
+
+    @Test
+    fun `createFolderFromApps rejects a nonexistent item id`() {
+        val id = controller.addApp("io.relite.a/Main")!!
+        assertNull(controller.createFolderFromApps("missing", id))
+        assertNull(controller.createFolderFromApps(id, "missing"))
+    }
+
+    @Test
+    fun `createFolderFromApps rejects a target that is not a plain app icon`() {
+        val appId = controller.addApp("io.relite.a/Main")!!
+        val folderId = controller.createFolder("Existing", listOf("io.relite.b/Main"))!!
+        assertNull(controller.createFolderFromApps(appId, folderId))
+    }
+
+    @Test
+    fun `createFolderFromApps persists across reload`() {
+        val sourceId = controller.addApp("io.relite.a/Main")!!
+        val targetId = controller.addApp("io.relite.b/Main")!!
+        val folderId = controller.createFolderFromApps(sourceId, targetId)!!
+
+        val reloaded = WorkspaceController(repository, TEST_DOCK_CAPACITY)
+        val folder = reloaded.current().items.single { it.id == folderId } as WorkspaceItem.FolderIcon
+        assertEquals(setOf("io.relite.a/Main", "io.relite.b/Main"), folder.itemComponentKeys.toSet())
+    }
+
     // --- reorderPages (sections 27-28, v0.5.0 completion pass) ---
 
     @Test
