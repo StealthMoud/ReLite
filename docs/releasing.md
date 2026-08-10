@@ -114,8 +114,8 @@ working tree clean
 ## Tagging
 
 ```bash
-git tag -a v0.3.0 -m "ReLite v0.3.0"
-git push origin v0.3.0   # only if/when you intend to publish — see below
+git tag -a v0.4.0 -m "ReLite v0.4.0"
+git push origin v0.4.0   # only if/when you intend to publish — see below
 ```
 
 Pushing a tag (and any `gh release create`) publishes to a remote and is
@@ -134,7 +134,7 @@ the loop.
   section — the CLI itself is installed from source via
   `./scripts/bootstrap.sh`, not a separate package, until a PyPI release
   is set up; see `docs/development.md`)
-- Link to `benchmarks/results/RMX5303/v0.2.0.md` (numbers unchanged in
-  v0.3.0 — a correctness/packaging release, not a new benchmark pass)
+- Link to `benchmarks/results/RMX5303/ab-launcher-vs-relite_home.json`
+  (fresh controlled A/B measurement for v0.4.0)
 - Link to `CHANGELOG.md`'s entry for this version
 - Rollback instructions: `docs/recovery.md`

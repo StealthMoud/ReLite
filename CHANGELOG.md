@@ -8,10 +8,13 @@ milestones (0.1, 0.2, 1.0).
 
 ## [Unreleased]
 
-ReLite Home's interactive editable-workspace UI — the thing v0.2.0/v0.3.0
-explicitly left at `WorkspaceController`-level only — is now wired up:
+## [0.4.0] — 2026-08-10
 
-### Added (ReLite Home, v0.4.0 in progress)
+ReLite Home's interactive editable-workspace UI — the thing v0.2.0/v0.3.0
+explicitly left at `WorkspaceController`-level only — is now wired up
+and validated live on the RMX5303:
+
+### Added (ReLite Home)
 
 - Cell-aware `WorkspaceGridLayout` rendering each item's real
   (column, row, span) instead of list-order placement.
@@ -40,14 +43,52 @@ explicitly left at `WorkspaceController`-level only — is now wired up:
 - The mandatory `androidTest` instrumentation suite
   (`app/src/androidTest/`) and `scripts/test-launcher-emulator.sh`.
 
-### Known gaps as of this entry
+### Fixed (found via live device testing on the RMX5303)
 
-Not yet run on a physical device or emulator — none was available in the
-environment that produced this work, so drag gestures, edge-hover timing,
-theme recreation, and the instrumentation suite have been compiled and
-code-reviewed but not exercised live. No controlled A/B benchmark, frame/
-jank measurement, or memory-stress pass has been run against this build.
-Not tagged as a release yet.
+- `ActivityScenario.state` was read from inside `onActivity{}` in the
+  instrumentation suite's `MainActivityTest` — that callback runs on the
+  main thread, and `getState()` explicitly forbids being called from it;
+  crashed the very first time the suite ran against real hardware.
+- `IllegalStateException: already recycled once`
+  (`ViewGroup$TouchTarget.recycle`) during a real long-press-then-drag
+  gesture — `HomePageFragment`'s drag start/finish mutated the view
+  hierarchy (adding/removing the drag proxy, potentially rebuilding the
+  pager) synchronously from inside the touch-dispatch callback that
+  triggered them. Both are now deferred via `post {}`.
+- `MainActivity` replaced `pager.adapter` with a brand-new
+  `HomePagerAdapter` on every single workspace edit — exactly the
+  anti-pattern `FragmentStateAdapter`'s own docs warn against. Now one
+  adapter instance is created per Activity and updated via
+  `notifyDataSetChanged()` with a generation-based stable id.
+- `relite benchmark-launchers` crashed (`MeasurementFailedError`
+  uncaught) the first time it was run against a real device for this
+  release: `device.yaml`'s stock-launcher activity name was stale for
+  this ROM build, and a label with zero valid samples crashed result
+  serialization instead of being reported as a partial failure. Both
+  are fixed (`devices/realme/RMX5303/device.yaml`, `relite/benchmark.py`,
+  `relite/cli.py`).
+
+### Validated live on the RMX5303 (Android 15)
+
+Full `androidTest` instrumentation suite (8/8) via
+`connectedDebugAndroidTest`; manual exercise of the drawer, search,
+add-to-home, cross-page "Move to page…", dock pin, Home Settings
+(export/import picker, theme switch to Dark and back across the
+recreation, reset with confirmation); a full device reboot with ReLite
+Home surviving as the active default launcher; a controlled, same-
+session, alternating-order A/B benchmark against the stock launcher
+(`relite benchmark-launchers`, 7 samples each) — settled PSS 53,020 kB
+vs. 129,958 kB, **-59.2%**; and a 15-second idle-CPU spot-check showing
+0% CPU with no interaction, consistent with the no-polling code audit.
+
+### Known gaps
+
+Widgets don't support drag (same-page or cross-page) — `AppWidgetHostView`
+owns its own touch input, so they move through "Move to page…" instead.
+No dedicated frame/jank or memory-stress pass has been run against this
+build. Package add/update/remove reconciliation while ReLite Home is
+foregrounded was not separately live-tested this pass (the reconciliation
+logic itself predates v0.4.0 and has JVM test coverage).
 
 ## [0.3.0] — 2026-08-09
 
