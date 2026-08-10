@@ -63,19 +63,19 @@ publishing an artifact signed with an unexpected key.
 ## Packaging a release
 
 ```bash
-./scripts/package-release.sh 0.4.0
+./scripts/package-release.sh 0.4.1
 ```
 
-One canonical command (section 13 of the v0.4.0 plan) produces
+One canonical command (section 152-155 of the v0.4.1 plan) produces
 everything a GitHub Release needs — not just the APK:
 
 ```text
-dist/ReLite-Home-v0.4.0-debug.apk
-dist/ReLite-Home-v0.4.0-debug.apk.sha256
-dist/relite-0.4.0-py3-none-any.whl
-dist/relite-0.4.0-py3-none-any.whl.sha256
-dist/relite-0.4.0.tar.gz
-dist/relite-0.4.0.tar.gz.sha256
+dist/ReLite-Home-v0.4.1-debug.apk
+dist/ReLite-Home-v0.4.1-debug.apk.sha256
+dist/relite-0.4.1-py3-none-any.whl
+dist/relite-0.4.1-py3-none-any.whl.sha256
+dist/relite-0.4.1.tar.gz
+dist/relite-0.4.1.tar.gz.sha256
 dist/release-manifest.json
 ```
 
@@ -114,8 +114,8 @@ working tree clean
 ## Tagging
 
 ```bash
-git tag -a v0.4.0 -m "ReLite v0.4.0"
-git push origin v0.4.0   # only if/when you intend to publish — see below
+git tag -a v0.4.1 -m "ReLite v0.4.1"
+git push origin v0.4.1   # only if/when you intend to publish — see below
 ```
 
 Pushing a tag (and any `gh release create`) publishes to a remote and is

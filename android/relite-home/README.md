@@ -7,11 +7,18 @@ with ~8 GB of RAM; ReLite Home itself makes no fixed RAM assumption —
 actual RAM varies by SKU/region and is read from the device, not
 hardcoded anywhere in this module.
 
-## What's actually working (v0.4.0)
+## What's actually working (v0.4.1)
 
 Unlike v0.3.0 (correctness/packaging only), v0.4.0 is the pass where
 every domain feature below got its actual UI surface wired up — not just
-a `WorkspaceController` method that could theoretically back one.
+a `WorkspaceController` method that could theoretically back one. v0.4.1
+is a hardening pass on top: the widget-picker's provider list actually
+populates now (it silently didn't before), package-lifecycle reconciliation
+matches exact `package/activity` components instead of package names,
+auto-page-creation is transactional, and folders got member reorder plus
+a real 2x2 preview. See `CHANGELOG.md`'s `[0.4.1]` entry for the full list,
+including what it deliberately doesn't cover yet (stress/jank measurement,
+the Samsung One UI visual-parity redesign).
 
 - **Home workspace** — cell-aware `WorkspaceGridLayout` (`ViewPager2` +
   `HomePageFragment`) rendering each item's real (column, row, span),

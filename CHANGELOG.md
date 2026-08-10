@@ -8,6 +8,115 @@ milestones (0.1, 0.2, 1.0).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-08-10
+
+A hardening pass on ReLite Home's widget pipeline, package lifecycle, and
+transactional persistence — the v0.4.1 plan's first-priority items — plus
+folder reorder/preview. Validated with the full Python + Android JVM +
+instrumentation gate on the RMX5303 after every change; the full Samsung
+One UI visual-parity redesign (plan Phase J) and the stress/jank
+measurement pass (Phase I) are not part of this release — see "Known
+gaps" below.
+
+### Fixed (widget pipeline)
+
+- `WidgetPickerActivity` never called `adapter.submitList(providers)`,
+  so the picker was always empty regardless of installed providers —
+  the actual release blocker this plan's Phase A opened with.
+- Added an explicit empty-state UX (no providers installed) instead of a
+  blank Activity, and pending widget-id/provider selection now survives
+  Activity recreation via `onSaveInstanceState`.
+- Widget removal is now transactional (`WidgetLifecycle.removeWidgetSafely`):
+  persists the workspace removal first and only deletes the AppWidgetHost
+  id if that succeeds, instead of the old delete-then-persist order that
+  could strand a dangling reference on a failed save.
+- A widget binding `AppWidgetManager.getAppWidgetInfo()` can't resolve
+  (uninstalled provider, never-actually-bound id) now renders a removable
+  "Widget unavailable" placeholder instead of crashing.
+- Resizing a widget now notifies the provider of its real rendered size
+  via `updateAppWidgetSize` on every rebuild of its host view.
+
+### Fixed (package lifecycle)
+
+- Package-change reconciliation now diffs the exact current
+  `package/activity` component set instead of package names only — a
+  package that renamed its launcher activity while staying installed used
+  to leave a dead shortcut pointing at the old activity forever
+  (`WorkspaceController.removeStaleComponents`).
+- Widget providers that disappear are now cleaned up too, including host
+  id deletion (`WorkspaceController.removeWidgetsForMissingProviders`).
+- The icon cache is invalidated on every reconciliation pass, so an
+  updated app's icon doesn't stay stale.
+- Package-change listener dispatch is now explicitly main-thread-safe and
+  snapshot-iterated, so a listener unsubscribing mid-dispatch can't throw
+  or get silently skipped.
+- ReLite Home no longer lists itself in its own app drawer: `MainActivity`'s
+  intent-filter no longer declares `CATEGORY_LAUNCHER` (only `HOME`), and
+  `AppRepository.loadAll()` explicitly filters out ReLite Home's own
+  package as a second line of defense.
+
+### Fixed (transactional persistence)
+
+- `WorkspaceController.addApp`/`addWidget` used to persist a new page as
+  its own save, then the new item as a second, separate save — a failed
+  second save left an empty extra page committed to disk. Both now fold
+  into one `mutate()` call.
+- Added `WorkspaceController.moveToNewPage(itemId)` as a single-transaction
+  replacement for the UI's old "add a page, then move the item there" two-call
+  pattern, which had the same orphan-page failure mode.
+- `HomeSettingsActivity.exportTo()` reported export success even when
+  `openOutputStream()` returned null (`?.use` on a null receiver never
+  throws). Layout import and reset now check `replaceWorkspace()`'s result
+  instead of assuming success.
+
+### Added (folders)
+
+- Folder member reorder ("Move left"/"Move right" from the member
+  long-press menu), backed by `WorkspaceController.reorderFolderMembers`.
+- A real 2x2 preview of a folder's first four member icons on the Home
+  grid (`FolderPreview`), replacing what used to render as an empty icon
+  slot with only a label.
+
+### Testing
+
+- Added JVM tests for every fix above with a real state assertion (not
+  just "didn't throw") — including simulated persistence failures during
+  auto-page-creation and `moveToNewPage` proving no orphan page is left.
+- Added `FolderInstrumentationTest`, exercising real folder creation and
+  Home-grid rendering (including the new preview) through the actual
+  `MainActivity`/`HomePageFragment` path on-device.
+- Full instrumentation suite: 9/9 passing on the RMX5303 (Android 15)
+  after every change in this pass.
+
+### Known gaps
+
+Not completed in this pass, honestly carried forward rather than claimed
+done:
+
+- Debug-only test widget fixture, widget-picker recreation/cancellation
+  instrumentation matrix, and live on-device widget bind/resize/remove
+  validation (plan sections 5-9, 15) — the picker-population fix itself
+  was verified via code + JVM-testable logic, not a live bind/configure
+  round-trip with a real provider this pass.
+- Portable widget backup / rebind-on-import (Phase G).
+- Structured `AppChangeEvent` sealed hierarchy (plan section 16) — package
+  lifecycle was hardened (exact reconciliation, main-thread/snapshot-safe
+  dispatch, icon invalidation, self-filter) without the full event-type
+  refactor; the existing single-callback `onAppsChanged` API was kept.
+- Fragment host-contract refactor away from transient callback fields
+  (Phase C, section 28) — recreation already passes instrumentation
+  (`ActivityRecreationTest`, `ThemeRecreationTest`, `FolderInstrumentationTest`
+  recreate cycle), but the specific process-death case of a `ViewPager2`-restored
+  `HomePageFragment` never receiving fresh callbacks was not independently
+  re-audited or fixed this pass.
+- Stress/memory/jank measurement pass (Phase I) and the full Samsung One
+  UI visual-parity redesign (Phase J) — both explicitly large,
+  multi-surface efforts out of scope for this hardening-focused release;
+  not attempted rather than partially done and mis-reported.
+- Final controlled A/B benchmark and multi-sample cold start were not
+  re-run this pass — no UI/behavior change in this release should affect
+  the v0.4.0 measured numbers, but they are not re-validated figures.
+
 ## [0.4.0] — 2026-08-10
 
 ReLite Home's interactive editable-workspace UI — the thing v0.2.0/v0.3.0
