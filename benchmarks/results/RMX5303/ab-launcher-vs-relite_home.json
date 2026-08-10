@@ -1,0 +1,122 @@
+{
+  "label_a": "launcher",
+  "label_b": "relite_home",
+  "samples": [
+    {
+      "label": "launcher",
+      "order_index": 0,
+      "settled_pss_kb": 129638,
+      "timestamp": "2026-08-10T02:25:19.764917+00:00"
+    },
+    {
+      "label": "relite_home",
+      "order_index": 1,
+      "settled_pss_kb": 52969,
+      "timestamp": "2026-08-10T02:26:07.335514+00:00"
+    },
+    {
+      "label": "relite_home",
+      "order_index": 2,
+      "settled_pss_kb": 52999,
+      "timestamp": "2026-08-10T02:26:55.057378+00:00"
+    },
+    {
+      "label": "launcher",
+      "order_index": 3,
+      "settled_pss_kb": 129819,
+      "timestamp": "2026-08-10T02:27:44.807656+00:00"
+    },
+    {
+      "label": "launcher",
+      "order_index": 4,
+      "settled_pss_kb": 130583,
+      "timestamp": "2026-08-10T02:28:32.164849+00:00"
+    },
+    {
+      "label": "relite_home",
+      "order_index": 5,
+      "settled_pss_kb": 53034,
+      "timestamp": "2026-08-10T02:29:19.787252+00:00"
+    },
+    {
+      "label": "relite_home",
+      "order_index": 6,
+      "settled_pss_kb": 53048,
+      "timestamp": "2026-08-10T02:30:07.353840+00:00"
+    },
+    {
+      "label": "launcher",
+      "order_index": 7,
+      "settled_pss_kb": 130032,
+      "timestamp": "2026-08-10T02:30:54.640608+00:00"
+    },
+    {
+      "label": "relite_home",
+      "order_index": 8,
+      "settled_pss_kb": 53026,
+      "timestamp": "2026-08-10T02:31:42.240578+00:00"
+    },
+    {
+      "label": "launcher",
+      "order_index": 9,
+      "settled_pss_kb": 129341,
+      "timestamp": "2026-08-10T02:32:29.470900+00:00"
+    },
+    {
+      "label": "launcher",
+      "order_index": 10,
+      "settled_pss_kb": 129958,
+      "timestamp": "2026-08-10T02:33:16.702355+00:00"
+    },
+    {
+      "label": "relite_home",
+      "order_index": 11,
+      "settled_pss_kb": 53020,
+      "timestamp": "2026-08-10T02:34:04.292649+00:00"
+    },
+    {
+      "label": "relite_home",
+      "order_index": 12,
+      "settled_pss_kb": 52816,
+      "timestamp": "2026-08-10T02:34:51.836669+00:00"
+    },
+    {
+      "label": "launcher",
+      "order_index": 13,
+      "settled_pss_kb": 131223,
+      "timestamp": "2026-08-10T02:35:41.419796+00:00"
+    }
+  ],
+  "stats": {
+    "launcher": {
+      "max_kb": 131223,
+      "median_kb": 129958,
+      "min_kb": 129341,
+      "p95_kb": 131223.0,
+      "samples_kb": [
+        129638,
+        129819,
+        130583,
+        130032,
+        129341,
+        129958,
+        131223
+      ]
+    },
+    "relite_home": {
+      "max_kb": 53048,
+      "median_kb": 53020,
+      "min_kb": 52816,
+      "p95_kb": 53048.0,
+      "samples_kb": [
+        52969,
+        52999,
+        53034,
+        53048,
+        53026,
+        53020,
+        52816
+      ]
+    }
+  }
+}

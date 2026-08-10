@@ -899,7 +899,12 @@ def benchmark_launchers(ctx: click.Context, label_a: str, label_b: str, runs: in
     """
     import json as _json
 
-    from relite.benchmark import RECOMMENDED_MIN_RUNS, run_launcher_ab_benchmark
+    from relite.benchmark import (
+        RECOMMENDED_MIN_RUNS,
+        MeasurementFailedError,
+        PssStats,
+        run_launcher_ab_benchmark,
+    )
     from relite.device_metadata import load_device_metadata
 
     if runs < 1:
@@ -941,11 +946,28 @@ def benchmark_launchers(ctx: click.Context, label_a: str, label_b: str, runs: in
     out_path.write_text(_json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n")
     console.print(f"[green]Saved: {out_path}[/green]")
 
-    stats_a = result.stats_for(label_a)
-    stats_b = result.stats_for(label_b)
-    console.print(f"{label_a}: median {stats_a.median:,.0f} kB (n={len(stats_a.samples_kb)})")
-    console.print(f"{label_b}: median {stats_b.median:,.0f} kB (n={len(stats_b.samples_kb)})")
-    if stats_a.median > 0:
+    # A label with zero valid samples (its activity failed to cold-start
+    # every attempt) must be reported, not crash the summary after the
+    # result was already saved to disk — hit this directly on a real
+    # device when one target's samples all came back empty.
+    try:
+        stats_a: PssStats | None = result.stats_for(label_a)
+    except MeasurementFailedError:
+        stats_a = None
+    try:
+        stats_b: PssStats | None = result.stats_for(label_b)
+    except MeasurementFailedError:
+        stats_b = None
+
+    if stats_a is not None:
+        console.print(f"{label_a}: median {stats_a.median:,.0f} kB (n={len(stats_a.samples_kb)})")
+    else:
+        console.print(f"[yellow]{label_a}: no valid samples[/yellow]")
+    if stats_b is not None:
+        console.print(f"{label_b}: median {stats_b.median:,.0f} kB (n={len(stats_b.samples_kb)})")
+    else:
+        console.print(f"[yellow]{label_b}: no valid samples[/yellow]")
+    if stats_a is not None and stats_b is not None and stats_a.median > 0:
         change = (stats_b.median - stats_a.median) / stats_a.median * 100
         console.print(f"{label_b} vs {label_a}: {change:+.1f}%")
 
