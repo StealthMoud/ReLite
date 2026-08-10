@@ -8,6 +8,159 @@ milestones (0.1, 0.2, 1.0).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-10
+
+A One UI-inspired transformation pass on ReLite Home on top of v0.4.1's
+hardening work — dynamic Home grids, a rebuilt Apps screen, a real Home
+edit mode, a redesigned Settings screen, a shared custom context menu, and
+several genuine correctness fixes found by actually running the app live
+on the RMX5303 during this pass, not just compiling it. See
+`docs/design/one-ui-current-reference.md` for the sourced Samsung
+references this work is grounded in, and
+`docs/design/one-ui-parity-matrix.md` for an honest per-surface parity
+grade — several major surfaces (Phase J's full folder redesign, the widget
+picker's visual redesign, portable widget rebind, the full stress/jank
+benchmark campaign) are explicitly out of scope for this pass; see Known
+gaps below.
+
+### Reliability
+
+- `ReliteHomeApplication.onCreate()` now creates every dependency the
+  package-reconciliation listener touches before `AppRepository.start()`
+  registers the `LauncherApps` callback, closing a window where an early
+  package broadcast could hit an uninitialized `lateinit` property.
+- Widget-provider reconciliation now sources from
+  `AppWidgetManager.installedProviders` with exact `package/providerClass`
+  comparison, instead of incorrectly inferring availability from launcher
+  activities (a widget-only provider has no launcher icon at all).
+- `MainActivity.launchApp` is now the one canonical safe launch path:
+  catches `ActivityNotFoundException`/`SecurityException`/
+  `IllegalArgumentException`/`IllegalStateException`, shows feedback, and
+  immediately reconciles the dead component instead of crashing.
+- `WorkspaceRepository.save()` now validates the candidate itself before
+  writing — defense-in-depth against ever persisting a structurally
+  invalid workspace, even from a caller that bypasses `WorkspaceController`.
+- `WorkspaceController.moveHomeAppIntoFolder`/`convertHomeAppToFolder` fold
+  what used to be two separate persisted saves into one transaction,
+  closing a real app-duplication risk on a save failure between them.
+- Reset and import now delete orphaned `AppWidgetHost` bindings
+  (`WorkspaceController.replaceWorkspaceSafely`) instead of leaving every
+  prior widget's host allocation behind forever.
+
+### Workspace / Home grid
+
+- Workspace schema v3 adds a persisted `HomeGridPreset` (4×6 default, 5×6)
+  matching the two grids current One UI 7 actually offers. Schema 1/2
+  files migrate for free — 4×6 is a strict superset of the old fixed 4×5
+  grid, so no existing item ever moves.
+- `WorkspaceController.changeHomeGrid()` reflows any item that no longer
+  fits under a new preset (own-page free rect, then a new page) — items
+  are never dropped.
+- A persisted `defaultPage` (also schema v3) — set from the new edit-mode
+  page strip — determines which page Home opens on first launch.
+- Real, non-square `GridMetrics` (from the actual measured grid) now drive
+  both a widget's initial span and its resize notification, replacing a
+  width-derived square-cell approximation that was wrong on both axes for
+  any non-square grid — which is now always, since 4×6/5×6 are never square.
+
+### Home
+
+- Long-pressing empty Home now enters a real edit-mode overlay (workspace
+  scales down slightly, a page strip, and Wallpaper and style/Widgets/Home
+  screen settings bottom actions) instead of a plain `AlertDialog` list.
+- "Show app labels" and "Show Apps screen button" toggles, actually wired
+  into rendering (not just persisted and ignored).
+- A shared, rounded-card `LauncherContextMenu` replaces the system
+  `PopupMenu` at every long-press site (Home items, Apps screen, dock,
+  folder members).
+
+### Apps screen
+
+- `AppsSortMode.CUSTOM` (default): horizontal paged grid, drag-reorderable
+  via `ItemTouchHelper`, order persisted. `AppsSortMode.ALPHABETICAL`:
+  vertical, always alphabetical — matches the axis coupling described in
+  the sourced Samsung reference.
+- Search bar moved to the bottom of the screen; a real bug in that move was
+  found and fixed live on the RMX5303 (see Fixed, below).
+- A "More" menu (Sort chooser + Home screen settings), reachable from both
+  the Apps screen and Settings.
+
+### Settings
+
+- Replaced the flat unsectioned button list with grouped sections (Home
+  screen, App and widget style, Apps screen, Appearance, Layout backup,
+  Default launcher/About) and a real Home-grid picker (tappable 4×6/5×6
+  cards driving the live `WorkspaceController`, not just a preference flag).
+
+### Fixed
+
+- A real bug found live on the RMX5303: the new bottom search bar's fixed
+  dp margin placed its tappable area inside the device's bottom gesture-nav
+  swipe zone, so a tap meant to focus the field was swallowed by the system
+  gesture instead of reaching the `EditText` (caught by
+  `DrawerSearchTest` failing on-device). Fixed by adding the real
+  `systemBars` bottom inset to the margin, the same way `MainActivity`'s
+  dock margin already handled it.
+- A real tooling gap found while stress-testing: `monkey -p io.relite.home`
+  cannot launch this app at all, because it deliberately has no
+  `CATEGORY_LAUNCHER` activity (v0.4.1, so it doesn't list itself in its
+  own drawer) — `monkey` resolves its target that way and aborts. Worked
+  around with direct `input tap`/`input swipe` injection in
+  `scripts/stress-relite-home.sh`.
+
+### Testing
+
+- 147 Kotlin JVM tests (up from 118 in v0.4.1), 13 instrumentation tests
+  (up from 9) — all passing live on the physical RMX5303 after every
+  feature batch in this pass, not just at the end.
+- Added `docs/design/one-ui-current-reference.md` (every claim sourced and
+  dated) and `docs/design/one-ui-parity-matrix.md` (per-surface grade with
+  a confidence qualifier, honest about what's LOW/not implemented).
+- Added `scripts/stress-relite-home.sh` and ran it for real; results in
+  `benchmarks/results/RMX5303/v0.5.0-stress-pass.md` — no crash/ANR
+  attributable to ReLite Home across a 300-event randomized input pass,
+  cold start ~780-820ms across 3 runs. Explicitly a scoped pass, not the
+  full multi-hour campaign (no jank measurement, no 5-minute idle CPU
+  figure, no fresh stock-launcher A/B).
+
+### Known gaps
+
+Deliberately not attempted or not completed this pass — recorded honestly
+rather than silently glossed over:
+
+- **Folders**: no drag-app-onto-app creation, no expanded/enlarged folder
+  view, no Apps-screen-Custom-mode folders. The existing v0.4.1 compact
+  preview + full-dialog editor is unchanged.
+- **Widgets**: no debug test widget fixture, no picker preview
+  cards/grouping, no drag/edit-mode resize handles (still +/- buttons), no
+  portable widget descriptor/rebind-on-import flow — export still drops
+  widgets entirely, same as v0.4.1.
+- **Icon size scaling**: not implemented — `IconCache` is a single
+  fixed-size shared cache created once at process start; a runtime-
+  adjustable size needs an architecture change not attempted this pass.
+- **Widget labels toggle**: no widget label UI exists at all to toggle.
+- **Home↔Apps swipe gesture**: not implemented; the dock's Apps button
+  default was deliberately kept on (not off, as the plan suggests) because
+  removing it without this gesture would leave no way to reach the drawer.
+- **Page reordering**: pages can be added/removed/set-default, not
+  dragged into a new order.
+- **Motion/haptics**: only a simple 200ms scale animation for edit-mode
+  enter/exit; no shared motion-token system, no haptic feedback anywhere,
+  no gesture-following Home↔Apps transition (since that gesture doesn't
+  exist yet).
+- **Accessibility**: existing 48dp targets and non-drag alternatives
+  preserved; new surfaces (edit mode, context menu, Apps sort) were not
+  run through a dedicated TalkBack/font-scale pass this session.
+- **Performance**: no jank/frame-timing measurement, no 5-minute idle CPU
+  figure, no fresh controlled A/B against the stock launcher for v0.5.0 —
+  the v0.4.1 −59.2% PSS figure is not re-validated or claimed for this
+  build.
+- **Physical validation**: covered by live instrumentation runs and the
+  scoped stress pass above; no dedicated reboot/upgrade-continuity/
+  full-feature-matrix pass on physical hardware beyond that.
+- **Release signing**: no real release key exists; packaged artifacts
+  remain debug-signed, honestly labeled as such.
+
 ## [0.4.1] — 2026-08-10
 
 A hardening pass on ReLite Home's widget pipeline, package lifecycle, and

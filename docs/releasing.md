@@ -63,19 +63,19 @@ publishing an artifact signed with an unexpected key.
 ## Packaging a release
 
 ```bash
-./scripts/package-release.sh 0.4.1
+./scripts/package-release.sh 0.5.0
 ```
 
 One canonical command (section 152-155 of the v0.4.1 plan) produces
 everything a GitHub Release needs — not just the APK:
 
 ```text
-dist/ReLite-Home-v0.4.1-debug.apk
-dist/ReLite-Home-v0.4.1-debug.apk.sha256
-dist/relite-0.4.1-py3-none-any.whl
-dist/relite-0.4.1-py3-none-any.whl.sha256
-dist/relite-0.4.1.tar.gz
-dist/relite-0.4.1.tar.gz.sha256
+dist/ReLite-Home-v0.5.0-debug.apk
+dist/ReLite-Home-v0.5.0-debug.apk.sha256
+dist/relite-0.5.0-py3-none-any.whl
+dist/relite-0.5.0-py3-none-any.whl.sha256
+dist/relite-0.5.0.tar.gz
+dist/relite-0.5.0.tar.gz.sha256
 dist/release-manifest.json
 ```
 
@@ -114,8 +114,8 @@ working tree clean
 ## Tagging
 
 ```bash
-git tag -a v0.4.1 -m "ReLite v0.4.1"
-git push origin v0.4.1   # only if/when you intend to publish — see below
+git tag -a v0.5.0 -m "ReLite v0.5.0"
+git push origin v0.5.0   # only if/when you intend to publish — see below
 ```
 
 Pushing a tag (and any `gh release create`) publishes to a remote and is
@@ -135,6 +135,8 @@ the loop.
   `./scripts/bootstrap.sh`, not a separate package, until a PyPI release
   is set up; see `docs/development.md`)
 - Link to `benchmarks/results/RMX5303/ab-launcher-vs-relite_home.json`
-  (fresh controlled A/B measurement for v0.4.0)
+  (controlled A/B measurement from v0.4.0 — **not re-validated for v0.5.0**,
+  see `benchmarks/results/RMX5303/v0.5.0-stress-pass.md` for what v0.5.0
+  actually measured this pass)
 - Link to `CHANGELOG.md`'s entry for this version
 - Rollback instructions: `docs/recovery.md`

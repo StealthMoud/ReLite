@@ -7,18 +7,23 @@ with ~8 GB of RAM; ReLite Home itself makes no fixed RAM assumption —
 actual RAM varies by SKU/region and is read from the device, not
 hardcoded anywhere in this module.
 
-## What's actually working (v0.4.1)
+## What's actually working (v0.5.0)
 
 Unlike v0.3.0 (correctness/packaging only), v0.4.0 is the pass where
-every domain feature below got its actual UI surface wired up — not just
-a `WorkspaceController` method that could theoretically back one. v0.4.1
-is a hardening pass on top: the widget-picker's provider list actually
-populates now (it silently didn't before), package-lifecycle reconciliation
-matches exact `package/activity` components instead of package names,
-auto-page-creation is transactional, and folders got member reorder plus
-a real 2x2 preview. See `CHANGELOG.md`'s `[0.4.1]` entry for the full list,
-including what it deliberately doesn't cover yet (stress/jank measurement,
-the Samsung One UI visual-parity redesign).
+every domain feature below got its actual UI surface wired up. v0.4.1
+hardened the widget pipeline, package lifecycle, and transactional
+persistence. v0.5.0 is a One UI-inspired transformation pass on top:
+dynamic 4×6/5×6 Home grids, a rebuilt Apps screen (Custom/Alphabetical
+sort, bottom search), a real Home edit mode, a redesigned sectioned
+Settings screen, and a shared custom context menu replacing the system
+`PopupMenu` throughout — see `CHANGELOG.md`'s `[0.5.0]` entry for the full
+list, `docs/design/one-ui-current-reference.md` for the sourced Samsung
+behavior this is grounded in, and `docs/design/one-ui-parity-matrix.md`
+for an honest per-surface grade. Major scope explicitly **not** covered
+this pass: the full folder redesign (drag-to-create, expanded view), the
+widget picker's visual redesign, portable widget rebind, icon size
+scaling, and the full stress/jank benchmark campaign — see the CHANGELOG's
+Known gaps.
 
 - **Home workspace** — cell-aware `WorkspaceGridLayout` (`ViewPager2` +
   `HomePageFragment`) rendering each item's real (column, row, span),
@@ -142,13 +147,18 @@ not a root framework.
 
 ## Known gaps
 
-- **Not yet run on a physical device or emulator this pass** — no
-  device was attached and no `emulator` binary was available in the
-  environment that produced this work, so the drag gestures, edge-hover
-  timing, theme recreation, and the `androidTest` suite have only been
-  compiled and code-reviewed, not exercised live. Run
-  `scripts/test-launcher-emulator.sh` once a device/emulator is
-  available.
+See `CHANGELOG.md`'s `[0.5.0]` entry for the current full list. Summary:
+
 - Widgets don't support drag — same-page or cross-page — because
   `AppWidgetHostView` owns its own touch input; they move through
-  "Move to page…" instead.
+  "Move to page…" instead. No widget picker preview cards, no portable
+  widget export/rebind.
+- No drag-app-onto-app folder creation and no expanded/enlarged folder
+  view — folders are menu-driven, with the existing compact 2×2 preview
+  and full-dialog editor.
+- No icon-size scaling and no widget-label toggle.
+- No Home↔Apps swipe gesture — the dock's Apps button stays on by default
+  as a result.
+- No jank/frame-timing measurement or 5-minute idle CPU figure; see
+  `benchmarks/results/RMX5303/v0.5.0-stress-pass.md` for what was actually
+  measured this pass (cold start, PSS, a crash/ANR scan).
