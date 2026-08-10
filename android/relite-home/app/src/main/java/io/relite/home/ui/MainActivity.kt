@@ -11,6 +11,10 @@ import android.view.View
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.FragmentContainerView
 import androidx.viewpager2.widget.ViewPager2
 import io.relite.home.R
@@ -53,6 +57,13 @@ class MainActivity : AppCompatActivity() {
         pageIndicator = findViewById(R.id.page_indicator)
         dock = findViewById(R.id.dock)
         drawerContainer = findViewById(R.id.drawer_container)
+
+        // Section 17-20 (v0.4.0): the home screen draws edge-to-edge behind
+        // the status/nav bars (it shows the wallpaper there), so every
+        // inset-sensitive edge is offset explicitly rather than relying on
+        // the system to inset the whole window for us.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        applyWindowInsets()
 
         pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
@@ -135,6 +146,37 @@ class MainActivity : AppCompatActivity() {
                 refreshWorkspace()
             },
         )
+    }
+
+    /**
+     * Section 17-20: keeps the workspace clear of the status bar/cutout at
+     * the top and the dock clear of the gesture/nav-bar region at the
+     * bottom, using the real inset values instead of a fixed padding
+     * constant that would be wrong on a different device or navigation
+     * mode. `pager`/`drawerContainer` re-render their own content (grid,
+     * drawer list) so top padding is enough there; the dock's bottom
+     * margin is nudged out by the extra system inset on top of its normal
+     * design margin.
+     */
+    private fun applyWindowInsets() {
+        val baseDockMarginBottom = resources.getDimensionPixelSize(R.dimen.dock_margin_bottom)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main_root)) { _, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            val topInset = maxOf(systemBars.top, cutout.top)
+
+            pager.setPadding(pager.paddingLeft, topInset, pager.paddingRight, pager.paddingBottom)
+            drawerContainer.setPadding(
+                drawerContainer.paddingLeft,
+                topInset,
+                drawerContainer.paddingRight,
+                drawerContainer.paddingBottom,
+            )
+            dock.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {
+                bottomMargin = baseDockMarginBottom + systemBars.bottom
+            }
+            insets
+        }
     }
 
     private fun openAppInfo(packageName: String) {

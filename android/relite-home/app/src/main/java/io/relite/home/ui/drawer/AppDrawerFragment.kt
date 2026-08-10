@@ -11,6 +11,8 @@ import android.view.View
 import android.widget.EditText
 import android.widget.PopupMenu
 import android.widget.Toast
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -46,6 +48,23 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         recycler.layoutManager = GridLayoutManager(requireContext(), app.workspaceController.gridSpec.columns)
         recycler.adapter = adapter
         recycler.setHasFixedSize(true)
+        recycler.clipToPadding = false
+
+        // Section 21: when the IME opens over the drawer, keep the last
+        // rows of results reachable rather than permanently hidden behind
+        // the keyboard.
+        val recyclerBasePaddingBottom = recycler.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navBar = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            recycler.setPadding(
+                recycler.paddingLeft,
+                recycler.paddingTop,
+                recycler.paddingRight,
+                recyclerBasePaddingBottom + maxOf(ime, navBar),
+            )
+            insets
+        }
 
         allApps = AppSearch.alphabetical(app.appRepository.loadAll())
         adapter.submitList(allApps)
