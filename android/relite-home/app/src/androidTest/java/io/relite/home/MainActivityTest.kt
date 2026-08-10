@@ -25,8 +25,14 @@ class MainActivityTest {
     @Test
     fun mainActivityLaunchesAndShowsTheWorkspace() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            // scenario.state must be read from the test thread, never from
+            // inside onActivity{} (that callback runs on the main thread —
+            // ActivityScenario.getState() throws
+            // "This method can not be called from the main application
+            // thread" if you try, as found running this suite live on the
+            // RMX5303).
+            assertEquals(androidx.lifecycle.Lifecycle.State.RESUMED, scenario.state)
             scenario.onActivity { activity ->
-                assertEquals(androidx.lifecycle.Lifecycle.State.RESUMED, scenario.state)
                 assertNotNullView(activity, R.id.home_pager)
                 assertNotNullView(activity, R.id.dock)
             }
