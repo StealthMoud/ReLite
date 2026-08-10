@@ -24,12 +24,16 @@
             android:id="@+id/resize_width_minus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:minWidth="@dimen/touch_target_min"
+            android:minHeight="@dimen/touch_target_min"
             android:text="@string/resize_width_minus" />
 
         <Button
             android:id="@+id/resize_width_plus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:minWidth="@dimen/touch_target_min"
+            android:minHeight="@dimen/touch_target_min"
             android:text="@string/resize_width_plus" />
 
     </LinearLayout>
@@ -44,12 +48,16 @@
             android:id="@+id/resize_height_minus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:minWidth="@dimen/touch_target_min"
+            android:minHeight="@dimen/touch_target_min"
             android:text="@string/resize_height_minus" />
 
         <Button
             android:id="@+id/resize_height_plus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:minWidth="@dimen/touch_target_min"
+            android:minHeight="@dimen/touch_target_min"
             android:text="@string/resize_height_plus" />
 
     </LinearLayout>

@@ -82,12 +82,25 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         val cellView = LayoutInflater.from(requireContext()).inflate(R.layout.item_workspace_icon, grid, false)
         cellView.findViewById<TextView>(R.id.label).text = labelFor(item, labels)
         cellView.findViewById<ImageView>(R.id.icon).setImageDrawable(iconFor(app, item))
+        // Section 24: a folder's icon has no visible label text of its own
+        // elsewhere to read, so TalkBack needs an explicit description with
+        // the member count; a plain app icon's own label is enough on its own.
+        cellView.contentDescription = when (item) {
+            is WorkspaceItem.FolderIcon -> getString(R.string.folder_content_description, item.label, item.itemComponentKeys.size)
+            else -> null
+        }
         return cellView
     }
 
     /** A live [AppWidgetHostView] — not a placeholder icon (section 48/57). */
-    private fun buildWidgetView(app: ReliteHomeApplication, item: WorkspaceItem.WidgetIcon): AppWidgetHostView =
-        app.appWidgetHost.bindWidgetView(item.appWidgetId)
+    private fun buildWidgetView(app: ReliteHomeApplication, item: WorkspaceItem.WidgetIcon): AppWidgetHostView {
+        val hostView = app.appWidgetHost.bindWidgetView(item.appWidgetId)
+        // The provider's own view usually announces its content, but the
+        // hosting cell itself still benefits from a label — falls back to
+        // the provider's component name when no friendlier label is known.
+        hostView.contentDescription = item.providerComponent.substringAfterLast(".").ifBlank { item.providerComponent }
+        return hostView
+    }
 
     private fun iconFor(app: ReliteHomeApplication, item: WorkspaceItem) = when (item) {
         is WorkspaceItem.AppIcon -> {
