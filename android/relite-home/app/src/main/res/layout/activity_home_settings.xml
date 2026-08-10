@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/relite_background">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:text="@string/action_home_settings"
+        android:textColor="@color/relite_text_primary"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/settings_export"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="start|center_vertical"
+        android:paddingHorizontal="16dp"
+        android:text="@string/settings_export_layout" />
+
+    <Button
+        android:id="@+id/settings_import"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="start|center_vertical"
+        android:paddingHorizontal="16dp"
+        android:text="@string/settings_import_layout" />
+
+    <Button
+        android:id="@+id/settings_reset"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="start|center_vertical"
+        android:paddingHorizontal="16dp"
+        android:text="@string/settings_reset_layout" />
+
+    <Button
+        android:id="@+id/settings_default_launcher"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="start|center_vertical"
+        android:paddingHorizontal="16dp"
+        android:text="@string/settings_default_launcher" />
+
+    <Button
+        android:id="@+id/settings_about"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="start|center_vertical"
+        android:paddingHorizontal="16dp"
+        android:text="@string/settings_about" />
+
+</LinearLayout>

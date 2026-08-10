@@ -353,6 +353,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             add(getString(R.string.action_widgets))
             add(getString(R.string.action_add_page))
             if (canRemove) add(getString(R.string.action_remove_page))
+            add(getString(R.string.action_home_settings))
         }
         android.app.AlertDialog.Builder(requireContext())
             .setItems(options.toTypedArray()) { _, which ->
@@ -366,6 +367,9 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                         app.workspaceController.removeEmptyPage(pageIndex)
                         onWorkspaceChanged?.invoke()
                     }
+                    getString(R.string.action_home_settings) -> startActivity(
+                        Intent(requireContext(), io.relite.home.ui.settings.HomeSettingsActivity::class.java),
+                    )
                 }
             }
             .setNegativeButton(R.string.cancel, null)

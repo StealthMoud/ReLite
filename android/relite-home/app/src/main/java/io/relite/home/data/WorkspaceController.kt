@@ -30,6 +30,9 @@ class WorkspaceController(
         workspace = repository.load()
     }
 
+    /** Section 65: atomically replaces the entire workspace — layout import, reset. */
+    fun replaceWorkspace(candidate: Workspace): Boolean = mutate { candidate }
+
     // --- home screen items ---
 
     fun addApp(componentKey: String, position: GridPosition? = null): String? {

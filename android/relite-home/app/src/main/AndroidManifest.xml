@@ -26,6 +26,8 @@
     <application
         android:name=".ReliteHomeApplication"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
@@ -50,6 +52,11 @@
 
         <activity
             android:name=".ui.widget.WidgetPickerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ReliteHome" />
+
+        <activity
+            android:name=".ui.settings.HomeSettingsActivity"
             android:exported="false"
             android:theme="@style/Theme.ReliteHome" />
 

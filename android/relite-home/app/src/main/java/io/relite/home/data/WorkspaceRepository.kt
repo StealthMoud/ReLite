@@ -52,6 +52,65 @@ class WorkspaceRepository(private val storage: Storage, private val gridSpec: La
     /** Returns true once the workspace is durably persisted — see [Storage.write]. */
     fun save(workspace: Workspace): Boolean = storage.write(serialize(workspace))
 
+    /**
+     * Section 60: a portable layout for export/import — the same schema as
+     * the internal file, but with every [WorkspaceItem.WidgetIcon] dropped.
+     * A widget's `appWidgetId` is a binding specific to this device and this
+     * install; carrying it into an export would be meaningless (or actively
+     * wrong) on any other device, and there is no cross-device equivalent to
+     * restore from — a re-added widget always needs a fresh pick/bind/configure
+     * flow, so there is nothing useful this format could preserve for one
+     * (section 65/66).
+     */
+    fun exportPortable(workspace: Workspace): String =
+        serialize(workspace.copy(items = workspace.items.filterNot { it is WorkspaceItem.WidgetIcon }))
+
+    /**
+     * Section 63-65: parses and structurally validates an imported layout,
+     * then drops any app/folder-member reference to a component that isn't
+     * currently installed (reported back via [ImportResult.Success.missingApps]
+     * rather than silently creating a dead shortcut). Never mutates anything
+     * — the caller decides whether/when to actually commit the result.
+     */
+    fun importPortable(raw: String, installedComponentKeys: Set<String>): ImportResult {
+        val parsed = try {
+            deserialize(raw)
+        } catch (e: Exception) {
+            return ImportResult.Failure("could not parse layout: ${e.message}")
+        }
+        val problems = validate(parsed, gridSpec)
+        if (problems.isNotEmpty()) {
+            return ImportResult.Failure(problems.joinToString("; "))
+        }
+
+        val missing = mutableSetOf<String>()
+        val filteredItems = parsed.items.mapNotNull { item ->
+            when (item) {
+                is WorkspaceItem.AppIcon ->
+                    if (item.componentKey in installedComponentKeys) item else { missing += item.componentKey; null }
+                is WorkspaceItem.FolderIcon -> {
+                    val (present, absent) = item.itemComponentKeys.partition { it in installedComponentKeys }
+                    missing += absent
+                    item.copy(itemComponentKeys = present)
+                }
+                is WorkspaceItem.WidgetIcon -> null // never present in a portable export, but guard defensively anyway
+            }
+        }
+        val filteredDock = parsed.dockComponentKeys.filter { key ->
+            (key in installedComponentKeys).also { if (!it) missing += key }
+        }
+
+        return ImportResult.Success(
+            candidate = parsed.copy(items = filteredItems, dockComponentKeys = filteredDock),
+            missingApps = missing.toList(),
+        )
+    }
+
+    sealed class ImportResult {
+        data class Success(val candidate: Workspace, val missingApps: List<String>) : ImportResult()
+        data class Failure(val reason: String) : ImportResult()
+    }
+
     private class UnsupportedSchemaException(message: String) : Exception(message)
 
     internal fun serialize(workspace: Workspace): String {

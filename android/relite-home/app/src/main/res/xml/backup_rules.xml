@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Legacy (API < 31) Auto Backup rules. Section 68: workspace.json holds
+    device-local AppWidgetHost bindings (appWidgetId) that mean nothing —
+    or point at the wrong widget — on any other device or after a factory
+    reset. A restored workspace.json would resurrect WorkspaceItem.WidgetIcon
+    entries whose appWidgetId no longer resolves to anything, rather than
+    the clean "no widgets yet, add them again" state layout export/import
+    already handles explicitly and safely.
+-->
+<full-backup-content>
+    <exclude domain="file" path="workspace.json" />
+</full-backup-content>

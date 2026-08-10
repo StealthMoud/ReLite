@@ -171,4 +171,93 @@ class WorkspaceRepositoryTest {
         val loaded = repo.load().items.single() as WorkspaceItem.FolderIcon
         assertEquals(listOf("io.relite.chess/Main", "io.relite.sudoku/Main"), loaded.itemComponentKeys)
     }
+
+    // --- portable layout export/import (sections 60-66, 111-112) ---
+
+    @Test
+    fun `exportPortable then importPortable round-trips apps, folders, and dock but drops widgets`() {
+        val repo = WorkspaceRepository(InMemoryStorage())
+        val workspace = Workspace(
+            pageCount = 1,
+            items = listOf(
+                WorkspaceItem.AppIcon("a1", GridPosition(0, 0, 0), "io.relite.camera/Main"),
+                WorkspaceItem.FolderIcon("f1", GridPosition(0, 1, 0), "Utilities", listOf("io.relite.calc/Main")),
+                WorkspaceItem.WidgetIcon(
+                    "w1", GridPosition(0, 2, 0), appWidgetId = 42, spanColumns = 1, spanRows = 1,
+                    providerComponent = "io.relite.widgets/Clock",
+                ),
+            ),
+            dockComponentKeys = listOf("io.relite.phone/Main"),
+        )
+        val installed = setOf("io.relite.camera/Main", "io.relite.calc/Main", "io.relite.phone/Main")
+
+        val exported = repo.exportPortable(workspace)
+        val result = repo.importPortable(exported, installed) as WorkspaceRepository.ImportResult.Success
+
+        assertTrue(result.missingApps.isEmpty())
+        assertEquals(2, result.candidate.items.size) // widget dropped
+        assertTrue(result.candidate.items.none { it is WorkspaceItem.WidgetIcon })
+        assertEquals(listOf("io.relite.phone/Main"), result.candidate.dockComponentKeys)
+    }
+
+    @Test
+    fun `importPortable reports apps not currently installed instead of keeping a dead shortcut`() {
+        val repo = WorkspaceRepository(InMemoryStorage())
+        val workspace = Workspace(
+            pageCount = 1,
+            items = listOf(
+                WorkspaceItem.AppIcon("a1", GridPosition(0, 0, 0), "io.relite.gone/Main"),
+                WorkspaceItem.FolderIcon(
+                    "f1", GridPosition(0, 1, 0), "Mixed",
+                    listOf("io.relite.gone2/Main", "io.relite.here/Main"),
+                ),
+            ),
+            dockComponentKeys = listOf("io.relite.gone3/Main"),
+        )
+        val exported = repo.exportPortable(workspace)
+
+        val result = repo.importPortable(exported, setOf("io.relite.here/Main")) as WorkspaceRepository.ImportResult.Success
+
+        assertEquals(
+            setOf("io.relite.gone/Main", "io.relite.gone2/Main", "io.relite.gone3/Main"),
+            result.missingApps.toSet(),
+        )
+        assertTrue(result.candidate.items.none { it is WorkspaceItem.AppIcon }) // the only AppIcon was missing
+        val folder = result.candidate.items.single { it is WorkspaceItem.FolderIcon } as WorkspaceItem.FolderIcon
+        assertEquals(listOf("io.relite.here/Main"), folder.itemComponentKeys)
+        assertTrue(result.candidate.dockComponentKeys.isEmpty())
+    }
+
+    @Test
+    fun `importPortable rejects malformed json instead of throwing`() {
+        val repo = WorkspaceRepository(InMemoryStorage())
+        val result = repo.importPortable("{not valid json", emptySet())
+        assertTrue(result is WorkspaceRepository.ImportResult.Failure)
+    }
+
+    @Test
+    fun `importPortable rejects a structurally invalid layout (overlapping items)`() {
+        val repo = WorkspaceRepository(InMemoryStorage())
+        val overlapping = """
+            {"schema": 2, "pageCount": 1, "dock": [], "items": [
+                {"id": "a", "type": "app", "position": {"page":0,"column":0,"row":0}, "componentKey": "io.relite.a/Main"},
+                {"id": "b", "type": "app", "position": {"page":0,"column":0,"row":0}, "componentKey": "io.relite.b/Main"}
+            ]}
+        """.trimIndent()
+
+        val result = repo.importPortable(overlapping, setOf("io.relite.a/Main", "io.relite.b/Main"))
+
+        assertTrue(result is WorkspaceRepository.ImportResult.Failure)
+    }
+
+    @Test
+    fun `a failed import does not mutate the storage backing the repository`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage)
+        repo.save(Workspace(1, listOf(WorkspaceItem.AppIcon("a1", GridPosition(0, 0, 0), "io.relite.a/Main")), emptyList()))
+
+        repo.importPortable("{not valid json", emptySet())
+
+        assertEquals(1, repo.load().items.size) // untouched — importPortable never writes to storage itself
+    }
 }

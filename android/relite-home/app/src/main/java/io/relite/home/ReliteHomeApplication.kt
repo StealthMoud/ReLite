@@ -32,6 +32,12 @@ class ReliteHomeApplication : Application() {
     lateinit var workspaceController: WorkspaceController
         private set
 
+    // Exposed alongside workspaceController for callers that need direct
+    // export/import serialization (HomeSettingsActivity) without going
+    // through the mutation-tracking layer WorkspaceController adds.
+    lateinit var workspaceRepository: WorkspaceRepository
+        private set
+
     lateinit var iconCache: IconCache
         private set
 
@@ -47,7 +53,7 @@ class ReliteHomeApplication : Application() {
         appRepository = AppRepository(this)
         appRepository.start()
 
-        val workspaceRepository = WorkspaceRepository(
+        workspaceRepository = WorkspaceRepository(
             FileStorage(File(filesDir, "workspace.json")),
             GRID_SPEC,
         )

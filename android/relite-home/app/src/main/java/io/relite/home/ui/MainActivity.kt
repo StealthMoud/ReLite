@@ -90,6 +90,15 @@ class MainActivity : AppCompatActivity() {
         app.appWidgetHost.stopListening()
     }
 
+    // HomeSettingsActivity (reset/import) mutates the same process-wide
+    // WorkspaceController instance directly rather than returning a result —
+    // simplest way to pick that up is to just re-render from its current
+    // in-memory state whenever this Activity becomes visible again.
+    override fun onResume() {
+        super.onResume()
+        refreshWorkspace()
+    }
+
     /**
      * (Re-)builds the pager and dock from the current [io.relite.home.data.WorkspaceController]
      * state. Called on initial load and after any edit (add/remove/move,
