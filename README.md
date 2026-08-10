@@ -8,7 +8,7 @@ First validated device: **realme C71 / RMX5303**
 ```text
 Settings cold launch:  1177 ms  →  544 ms    (performance profile)
 Camera cold launch:     724 ms  →  612 ms    (performance profile)
-Launcher settled PSS:  123 MB   →  54 MB     (ReLite Home vs. stock, −56.2%)
+Launcher settled PSS:  130 MB   →  53 MB     (ReLite Home v0.4.0 vs. stock, −59.2%)
 Enabled packages:       400     →   390      (performance profile)
 
 Recommended profile: performance
@@ -16,14 +16,18 @@ Recommended profile: performance
 
 Full methodology and every number's provenance:
 `benchmarks/results/RMX5303/v0.2.0.md` (device/profile numbers unchanged
-since v0.1.0; the launcher PSS comparison was re-measured for v0.2.0 —
-see that report for why the gap widened between sessions and what that
-does and doesn't prove). v0.3.0 was a correctness/packaging/security
-release with no package-action or launcher-UI changes, so these numbers
-are still current and were not re-measured — see CHANGELOG.md's v0.3.0
-entry. These are real measurements from a physical unit, not
-projections — see `docs/safety.md` and `benchmarks/methodology.md` for
-how they were produced and what they don't claim.
+since v0.1.0). v0.3.0 was a correctness/packaging/security release with
+no package-action or launcher-UI changes, so its numbers were not
+re-measured — see CHANGELOG.md's v0.3.0 entry. The launcher PSS
+comparison above is a fresh, controlled, same-session, alternating-order
+measurement for v0.4.0 (7 samples each — see
+`benchmarks/results/RMX5303/ab-launcher-vs-relite_home.json`), not a
+reuse of the v0.2.0 figure — v0.4.0 adds a full interactive workspace
+(drag/drop, dock, folders, widgets) on top of what earlier releases
+measured, and the number stands on its own. These are real measurements
+from a physical unit, not projections — see `docs/safety.md` and
+`benchmarks/methodology.md` for how they were produced and what they
+don't claim.
 
 ReLite works over ADB, without root, without an unlocked bootloader, and
 without a custom recovery — every change it makes is reversible. First
@@ -127,12 +131,19 @@ planner rewrite; see CHANGELOG.md). `performance` is the
 ReLite-recommended default for this device — see `docs/profiles.md` for
 the full inheritance model and what qualifies a package for each level.
 
-ReLite Home, installed and tested on this same unit: settled PSS
-**53,957 kB, ~56.2% lower** than the stock launcher's 123,310 kB
-(median of 3 runs each, same decay-curve-verified settle time as
-v0.1.0 — see `benchmarks/results/RMX5303/v0.2.0.md` for why this gap
-widened since v0.1.0's 31.5% and what that measurement can't tell you
-on its own).
+ReLite Home v0.4.0, installed and tested on this same unit: settled PSS
+**53,020 kB, ~59.2% lower** than the stock launcher's 129,958 kB (median
+of 7 alternating-order samples each in a single controlled session, same
+decay-curve-verified settle time as v0.1.0/v0.2.0 — see
+`benchmarks/results/RMX5303/ab-launcher-vs-relite_home.json` for the raw
+samples and `benchmarks/results/RMX5303/v0.2.0.md` for the earlier
+methodology writeup this reused). v0.4.0 added a full interactive
+workspace (drag/drop including cross-page, dock editing, folders,
+widgets) since the v0.2.0 measurement, and ReLite Home's own footprint
+barely moved (53,957 kB then vs. 53,020 kB now) while the stock
+launcher's baseline in this session ran a bit higher (129,958 kB vs.
+123,310 kB) — both plausible session-to-session drift, not a claim that
+either launcher changed.
 
 Manual, human-only validation (calls, SMS, GPS, fingerprint, etc.) is
 tracked separately and was not a blocker for any of the above — see
