@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -14,6 +15,8 @@ import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
 import io.relite.home.data.Workspace
 import io.relite.home.data.WorkspaceRepository
+import io.relite.home.util.ThemeMode
+import io.relite.home.util.ThemePreference
 
 /**
  * Sections 17/60-71: the one settings surface this launcher has — layout
@@ -51,6 +54,27 @@ class HomeSettingsActivity : AppCompatActivity() {
         findViewById<android.widget.Button>(R.id.settings_reset).setOnClickListener { confirmReset() }
         findViewById<android.widget.Button>(R.id.settings_default_launcher).setOnClickListener { openDefaultLauncherHelper() }
         findViewById<android.widget.Button>(R.id.settings_about).setOnClickListener { showAbout() }
+
+        setUpThemePicker()
+    }
+
+    /** Section 11-16: explicit theme choice, applied immediately (AppCompat recreates this Activity for us). */
+    private fun setUpThemePicker() {
+        val group = findViewById<RadioGroup>(R.id.settings_theme_group)
+        val idForMode = mapOf(
+            ThemeMode.SYSTEM to R.id.theme_system,
+            ThemeMode.LIGHT to R.id.theme_light,
+            ThemeMode.DARK to R.id.theme_dark,
+        )
+        val modeForId = idForMode.entries.associate { (mode, id) -> id to mode }
+
+        group.check(idForMode.getValue(ThemePreference.get(this)))
+        group.setOnCheckedChangeListener { _, checkedId ->
+            val mode = modeForId[checkedId] ?: return@setOnCheckedChangeListener
+            if (mode != ThemePreference.get(this)) {
+                ThemePreference.set(this, mode)
+            }
+        }
     }
 
     private fun exportTo(uri: Uri) {

@@ -10,6 +10,7 @@ import io.relite.home.data.WorkspaceController
 import io.relite.home.data.WorkspaceRepository
 import io.relite.home.ui.widget.ReliteAppWidgetHost
 import io.relite.home.util.IconCache
+import io.relite.home.util.ThemePreference
 import java.io.File
 
 /**
@@ -50,6 +51,10 @@ class ReliteHomeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Applied before any Activity is created, so there's no flash of
+        // the wrong theme (section 15).
+        ThemePreference.applyToProcess(ThemePreference.get(this))
+
         appRepository = AppRepository(this)
         appRepository.start()
 

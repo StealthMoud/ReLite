@@ -50,6 +50,41 @@
         android:paddingHorizontal="16dp"
         android:text="@string/settings_default_launcher" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="16dp"
+        android:text="@string/settings_theme"
+        android:textColor="@color/relite_text_secondary"
+        android:textSize="14sp" />
+
+    <RadioGroup
+        android:id="@+id/settings_theme_group"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="8dp">
+
+        <RadioButton
+            android:id="@+id/theme_system"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="@string/settings_theme_system" />
+
+        <RadioButton
+            android:id="@+id/theme_light"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="@string/settings_theme_light" />
+
+        <RadioButton
+            android:id="@+id/theme_dark"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="@string/settings_theme_dark" />
+    </RadioGroup>
+
     <Button
         android:id="@+id/settings_about"
         style="?android:attr/borderlessButtonStyle"

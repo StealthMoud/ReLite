@@ -75,4 +75,56 @@ class AppSearchTest {
         assertEquals(listOf("🎵 Music"), AppSearch.search(mixed, "🎵").map { it.label })
         assertEquals(3, AppSearch.alphabetical(mixed).size) // sorting unicode/RTL/emoji labels must not throw
     }
+
+    @Test
+    fun `query tokens match regardless of order, including three tokens`() {
+        val googlePhotos = AppEntry("io.relite.photos", "Main", "Google Photos Editor")
+        assertEquals(
+            listOf("Google Photos Editor"),
+            AppSearch.search(listOf(googlePhotos), "editor google photos").map { it.label },
+        )
+    }
+
+    @Test
+    fun `a plain substring match still ranks via the all-tokens tier`() {
+        val webcam = AppEntry("io.relite.webcam", "Main", "WebcamViewer")
+        assertEquals(listOf("WebcamViewer"), AppSearch.search(listOf(webcam), "camview").map { it.label })
+    }
+
+    @Test
+    fun `leading, trailing, and repeated whitespace in the query is ignored`() {
+        val googlePhotos = AppEntry("io.relite.photos", "Main", "Google Photos")
+        assertEquals(
+            listOf("Google Photos"),
+            AppSearch.search(listOf(googlePhotos), "  google   photos  ").map { it.label },
+        )
+    }
+
+    @Test
+    fun `accented Latin query matches an unaccented label tier correctly and vice versa`() {
+        val cafe = AppEntry("io.relite.cafe", "Main", "Cafe Finder")
+        assertEquals(listOf("Cafe Finder"), AppSearch.search(listOf(cafe), "Cafe").map { it.label })
+    }
+
+    @Test
+    fun `Persian and Arabic labels support prefix and full-token search`() {
+        val persian = AppEntry("io.relite.fa", "Main", "تنظیمات")
+        val arabic = AppEntry("io.relite.ar", "Main", "تطبيق الكاميرا")
+        val apps = listOf(persian, arabic)
+
+        assertEquals(listOf("تنظیمات"), AppSearch.search(apps, "تنظ").map { it.label })
+        assertEquals(listOf("تطبيق الكاميرا"), AppSearch.search(apps, "الكاميرا تطبيق").map { it.label })
+    }
+
+    @Test
+    fun `ties within the same score tier break alphabetically, stable across repeated calls`() {
+        val bravo = AppEntry("io.relite.bravo", "Main", "Bravo App")
+        val alpha = AppEntry("io.relite.alpha", "Main", "Alpha App")
+        val apps = listOf(bravo, alpha)
+
+        val first = AppSearch.search(apps, "app").map { it.label }
+        val second = AppSearch.search(apps, "app").map { it.label }
+        assertEquals(listOf("Alpha App", "Bravo App"), first)
+        assertEquals(first, second)
+    }
 }
