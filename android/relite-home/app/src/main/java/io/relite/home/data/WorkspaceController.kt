@@ -42,6 +42,23 @@ class WorkspaceController(
     /** Section 65: atomically replaces the entire workspace — layout import, reset. */
     fun replaceWorkspace(candidate: Workspace): Boolean = mutate { candidate }
 
+    /**
+     * Section 44 (v0.5.0): same as [replaceWorkspace], but also reports
+     * which `appWidgetId`s existed before and are gone after — a reset or
+     * import can drop [WorkspaceItem.WidgetIcon]s (reset always does;
+     * import never carries widgets at all, see [WorkspaceRepository.exportPortable])
+     * without the caller otherwise having any way to know which host
+     * bindings are now orphaned. Only ever returns removed ids on a
+     * successful commit — a failed save changes nothing, so nothing to clean up.
+     */
+    fun replaceWorkspaceSafely(candidate: Workspace): Pair<Boolean, Set<Int>> {
+        val oldWidgetIds = workspace.items.filterIsInstance<WorkspaceItem.WidgetIcon>().map { it.appWidgetId }.toSet()
+        val newWidgetIds = candidate.items.filterIsInstance<WorkspaceItem.WidgetIcon>().map { it.appWidgetId }.toSet()
+        val removedIds = oldWidgetIds - newWidgetIds
+        val ok = mutate { candidate }
+        return ok to (if (ok) removedIds else emptySet())
+    }
+
     // --- home screen items ---
 
     /**

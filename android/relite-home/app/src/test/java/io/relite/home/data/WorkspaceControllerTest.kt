@@ -783,6 +783,49 @@ class WorkspaceControllerTest {
         assertEquals(1, controller.current().defaultPage)
     }
 
+    // --- replaceWorkspaceSafely (section 44, v0.5.0) ---
+
+    @Test
+    fun `replaceWorkspaceSafely reports widget ids that existed before but not after`() {
+        controller.addWidget(appWidgetId = 1, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
+        controller.addWidget(appWidgetId = 2, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Weather")
+
+        val (ok, removed) = controller.replaceWorkspaceSafely(Workspace.empty())
+
+        assertTrue(ok)
+        assertEquals(setOf(1, 2), removed)
+    }
+
+    @Test
+    fun `replaceWorkspaceSafely does not report a widget id still present in the new workspace`() {
+        val widgetId = "w1"
+        val current = controller.current().copy(
+            items = listOf(
+                WorkspaceItem.WidgetIcon(widgetId, GridPosition(0, 0, 0), 5, 1, 1, "io.relite.widgets/Clock"),
+            ),
+        )
+        controller.replaceWorkspace(current)
+
+        val (ok, removed) = controller.replaceWorkspaceSafely(current)
+
+        assertTrue(ok)
+        assertTrue(removed.isEmpty())
+    }
+
+    @Test
+    fun `a failed replaceWorkspaceSafely reports no removed ids`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage, TEST_DOCK_CAPACITY)
+        val ctrl = WorkspaceController(repo, TEST_DOCK_CAPACITY)
+        ctrl.addWidget(appWidgetId = 1, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
+
+        storage.failWrites = true
+        val (ok, removed) = ctrl.replaceWorkspaceSafely(Workspace.empty())
+
+        assertFalse(ok)
+        assertTrue(removed.isEmpty())
+    }
+
     private companion object {
         const val TEST_DOCK_CAPACITY = 5
     }

@@ -191,7 +191,12 @@ class HomeSettingsActivity : AppCompatActivity() {
             .setPositiveButton(R.string.ok) { _, _ ->
                 // Section 39 (v0.4.1): only report success when the
                 // persisted commit actually succeeded.
-                if (app.workspaceController.replaceWorkspace(result.candidate)) {
+                val (ok, removedWidgetIds) = app.workspaceController.replaceWorkspaceSafely(result.candidate)
+                if (ok) {
+                    // Section 44 (v0.5.0): a portable import never carries
+                    // widgets, so every widget the previous layout had is
+                    // now orphaned host state unless explicitly cleaned up.
+                    removedWidgetIds.forEach { app.appWidgetHost.removeWidget(it) }
                     Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
                     finish()
                 } else {
@@ -208,7 +213,12 @@ class HomeSettingsActivity : AppCompatActivity() {
             .setMessage(R.string.reset_confirm_message)
             .setPositiveButton(R.string.ok) { _, _ ->
                 // Section 40 (v0.4.1): same false-success fix as import.
-                if (app.workspaceController.replaceWorkspace(Workspace.empty())) {
+                val (ok, removedWidgetIds) = app.workspaceController.replaceWorkspaceSafely(Workspace.empty())
+                if (ok) {
+                    // Section 44 (v0.5.0): every widget the layout had is
+                    // now orphaned host state — clean it up, not just the
+                    // workspace reference to it.
+                    removedWidgetIds.forEach { app.appWidgetHost.removeWidget(it) }
                     Toast.makeText(this, R.string.reset_success, Toast.LENGTH_SHORT).show()
                     finish()
                 } else {
