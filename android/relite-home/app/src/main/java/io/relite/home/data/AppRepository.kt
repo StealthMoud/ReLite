@@ -30,16 +30,24 @@ class AppRepository(context: Context) {
         fun dispose()
     }
 
-    private val listeners = mutableListOf<() -> Unit>()
+    private val listeners = mutableListOf<(AppChangeEvent) -> Unit>()
 
     private val callback = object : LauncherApps.Callback() {
-        override fun onPackageAdded(packageName: String?, user: UserHandle?) = notifyChanged()
-        override fun onPackageRemoved(packageName: String?, user: UserHandle?) = notifyChanged()
-        override fun onPackageChanged(packageName: String?, user: UserHandle?) = notifyChanged()
-        override fun onPackagesAvailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) =
-            notifyChanged()
-        override fun onPackagesUnavailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) =
-            notifyChanged()
+        override fun onPackageAdded(packageName: String?, user: UserHandle?) {
+            packageName?.let { notifyChanged(AppChangeEvent.Added(it)) }
+        }
+        override fun onPackageRemoved(packageName: String?, user: UserHandle?) {
+            packageName?.let { notifyChanged(AppChangeEvent.Removed(it)) }
+        }
+        override fun onPackageChanged(packageName: String?, user: UserHandle?) {
+            packageName?.let { notifyChanged(AppChangeEvent.Changed(it)) }
+        }
+        override fun onPackagesAvailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) {
+            packageNames?.let { notifyChanged(AppChangeEvent.Available(it.toList())) }
+        }
+        override fun onPackagesUnavailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) {
+            packageNames?.let { notifyChanged(AppChangeEvent.Unavailable(it.toList())) }
+        }
     }
 
     fun start() {
@@ -58,8 +66,13 @@ class AppRepository(context: Context) {
      * each entry holding a closure over the fragment/adapter it belonged
      * to, so destroyed drawer instances kept receiving — and being kept
      * alive by — every future package-change callback.
+     *
+     * Section 11-14 (v0.5.0 completion pass): [listener] receives the typed
+     * [AppChangeEvent] so it can react proportionately — e.g. invalidate
+     * only the affected package's cached icon — instead of every caller
+     * being forced to treat every change as "reload/invalidate everything".
      */
-    fun onAppsChanged(listener: () -> Unit): Subscription {
+    fun onAppsChanged(listener: (AppChangeEvent) -> Unit): Subscription {
         listeners.add(listener)
         return Subscription { listeners.remove(listener) }
     }
@@ -72,10 +85,10 @@ class AppRepository(context: Context) {
      * direct result of the very change being delivered) must not throw
      * ConcurrentModificationException or skip a still-registered listener.
      */
-    private fun notifyChanged() {
+    private fun notifyChanged(event: AppChangeEvent) {
         val runDispatch = {
             val snapshot = listeners.toList()
-            snapshot.forEach { it() }
+            snapshot.forEach { it(event) }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) runDispatch() else mainHandler.post(runDispatch)
     }

@@ -133,12 +133,20 @@ class MainActivity : AppCompatActivity(), LauncherHost {
     override fun onStart() {
         super.onStart()
         app.appWidgetHost.startListening()
+        app.addHomeRefreshListener(homeRefreshListener)
     }
 
     override fun onStop() {
         super.onStop()
         app.appWidgetHost.stopListening()
+        app.removeHomeRefreshListener(homeRefreshListener)
     }
+
+    // Section 15 (v0.5.0 completion pass): a package-change reconciliation
+    // that runs while Home is already visible (e.g. a background
+    // auto-update) must not leave stale icons/dead shortcuts on screen
+    // until the user backgrounds and re-opens ReLite Home.
+    private val homeRefreshListener: () -> Unit = { refreshWorkspace() }
 
     // HomeSettingsActivity (reset/import) mutates the same process-wide
     // WorkspaceController instance directly rather than returning a result —

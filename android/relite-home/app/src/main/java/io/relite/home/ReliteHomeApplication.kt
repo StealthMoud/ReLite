@@ -61,6 +61,22 @@ class ReliteHomeApplication : Application() {
      */
     var lastGridMetrics: io.relite.home.ui.home.WorkspaceGridLayout.GridMetrics? = null
 
+    // Section 15 (v0.5.0 completion pass): a tiny, deliberately minimal
+    // pub/sub so MainActivity can ask to be refreshed the moment package
+    // reconciliation changes the workspace, instead of only picking it up
+    // on its next onResume(). Not AppRepository.onAppsChanged itself: this
+    // fires strictly *after* this class's own reconciliation has already
+    // run, so a listener always sees the already-cleaned-up workspace.
+    private val homeRefreshListeners = mutableListOf<() -> Unit>()
+
+    fun addHomeRefreshListener(listener: () -> Unit) {
+        homeRefreshListeners.add(listener)
+    }
+
+    fun removeHomeRefreshListener(listener: () -> Unit) {
+        homeRefreshListeners.remove(listener)
+    }
+
     override fun onCreate() {
         super.onCreate()
         // Applied before any Activity is created, so there's no flash of
@@ -88,7 +104,7 @@ class ReliteHomeApplication : Application() {
 
         appWidgetHost = ReliteAppWidgetHost(this)
 
-        appRepository.onAppsChanged {
+        appRepository.onAppsChanged { event ->
             // Section 20/21 (v0.4.1): reconcile against the exact set of
             // currently-launchable package/activity components, not just
             // package names — a package that renamed its launcher activity
@@ -115,11 +131,19 @@ class ReliteHomeApplication : Application() {
             val removedWidgetIds = workspaceController.removeWidgetsForMissingProviders(availableProviderComponents)
             removedWidgetIds.forEach { appWidgetHost.removeWidget(it) }
 
-            // Section 19 (v0.4.1): any Changed/Removed/Unavailable package
-            // may have altered its icon; a bounded byte-capped cache makes
-            // clearing on every reconciliation cheap enough to not need
-            // per-package diffing here.
-            iconCache.clear()
+            // Section 14/19 (v0.5.0 completion pass): the event always
+            // names the specific package(s) that changed, so only those
+            // packages' cached icons need to go — a full clear (still used
+            // under real memory pressure, see onTrimMemory) is unnecessary
+            // work on every single-package update.
+            event.affectedPackages.forEach { iconCache.invalidate(it) }
+
+            // Section 15 (v0.5.0 completion pass): reconciliation above can
+            // drop workspace items and widgets while Home is already
+            // visible (e.g. a background auto-update) — MainActivity's own
+            // subscription (below) refreshes the on-screen grid immediately
+            // rather than waiting for the next onResume.
+            homeRefreshListeners.toList().forEach { it() }
         }
 
         appRepository.start()
