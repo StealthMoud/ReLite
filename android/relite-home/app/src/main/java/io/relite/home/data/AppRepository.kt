@@ -2,6 +2,8 @@ package io.relite.home.data
 
 import android.content.Context
 import android.content.pm.LauncherApps
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.os.UserHandle
 
@@ -16,6 +18,12 @@ class AppRepository(context: Context) {
     private val appContext = context.applicationContext
     private val launcherApps = appContext.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
     private val user: UserHandle = Process.myUserHandle()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    // Section 46 (v0.4.1): ReLite Home's own HOME activity is not
+    // CATEGORY_LAUNCHER (see AndroidManifest.xml), so LauncherApps already
+    // excludes it from getActivityList(); this is a second, explicit line
+    // of defense in case that ever changes.
+    private val ownPackageName = appContext.packageName
 
     /** Dispose to stop receiving [AppRepository] change notifications. */
     fun interface Subscription {
@@ -56,16 +64,32 @@ class AppRepository(context: Context) {
         return Subscription { listeners.remove(listener) }
     }
 
+    /**
+     * Section 17/18 (v0.4.1): delivered on the main thread (LauncherApps.Callback
+     * itself already fires there, but this makes the contract explicit rather
+     * than relying on caller registration order) and iterates a snapshot —
+     * a listener unsubscribing mid-dispatch (e.g. a Fragment torn down as a
+     * direct result of the very change being delivered) must not throw
+     * ConcurrentModificationException or skip a still-registered listener.
+     */
     private fun notifyChanged() {
-        listeners.forEach { it() }
+        val runDispatch = {
+            val snapshot = listeners.toList()
+            snapshot.forEach { it() }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) runDispatch() else mainHandler.post(runDispatch)
     }
 
     fun loadAll(): List<AppEntry> =
-        launcherApps.getActivityList(null, user).map { info ->
-            AppEntry(
-                packageName = info.applicationInfo.packageName,
-                activityName = info.componentName.className,
-                label = info.label.toString(),
-            )
-        }
+        launcherApps.getActivityList(null, user)
+            .asSequence()
+            .filter { it.applicationInfo.packageName != ownPackageName }
+            .map { info ->
+                AppEntry(
+                    packageName = info.applicationInfo.packageName,
+                    activityName = info.componentName.className,
+                    label = info.label.toString(),
+                )
+            }
+            .toList()
 }

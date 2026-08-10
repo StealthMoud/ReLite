@@ -385,6 +385,51 @@ class WorkspaceControllerTest {
         assertEquals(1, controller.current().items.size)
     }
 
+    // --- exact component reconciliation (section 20/21, v0.4.1) ---
+
+    @Test
+    fun `removeStaleComponents drops a renamed activity but keeps the package's new activity`() {
+        controller.addApp("io.relite.app/OldActivity", GridPosition(0, 0, 0))
+        controller.addToDock("io.relite.app/OldActivity")
+
+        // Package is still installed, just under a new activity name — the
+        // old shortcut is now dead, but the package itself is fine.
+        controller.removeStaleComponents(setOf("io.relite.app/NewActivity"))
+
+        assertTrue(controller.current().items.isEmpty())
+        assertTrue(controller.current().dockComponentKeys.isEmpty())
+    }
+
+    @Test
+    fun `removeStaleComponents keeps a component still in the launchable set`() {
+        controller.addApp("io.relite.alive/Main", GridPosition(0, 0, 0))
+        controller.removeStaleComponents(setOf("io.relite.alive/Main"))
+        assertEquals(1, controller.current().items.size)
+    }
+
+    @Test
+    fun `removeStaleComponents keeps widgets untouched`() {
+        controller.addWidget(appWidgetId = 1, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
+        controller.removeStaleComponents(emptySet())
+        assertEquals(1, controller.current().items.size)
+    }
+
+    @Test
+    fun `removeWidgetsForMissingProviders removes widgets whose provider package is gone`() {
+        controller.addWidget(appWidgetId = 7, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
+        val removed = controller.removeWidgetsForMissingProviders(emptySet())
+        assertEquals(setOf(7), removed)
+        assertTrue(controller.current().items.isEmpty())
+    }
+
+    @Test
+    fun `removeWidgetsForMissingProviders leaves widgets whose provider is still available`() {
+        controller.addWidget(appWidgetId = 7, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
+        val removed = controller.removeWidgetsForMissingProviders(setOf("io.relite.widgets"))
+        assertTrue(removed.isEmpty())
+        assertEquals(1, controller.current().items.size)
+    }
+
     // --- reload ---
 
     @Test

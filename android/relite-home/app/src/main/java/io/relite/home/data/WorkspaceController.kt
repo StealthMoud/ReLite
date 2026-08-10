@@ -204,6 +204,54 @@ class WorkspaceController(
         }
     }
 
+    /**
+     * Section 20/21 (v0.4.1): exact `package/activity` reconciliation.
+     * [removeShortcutsForPackage] only checks whether *any* activity of a
+     * package remains launchable, so a package that simply renamed its
+     * launcher activity (`.OldActivity` -> `.NewActivity`, package still
+     * installed) left the stale `.OldActivity` shortcut in place forever —
+     * present, but dead on tap. This removes shortcuts/dock/folder entries
+     * whose exact componentKey is not in [stillLaunchable], leaving
+     * everything else (including the package's still-valid new activity)
+     * untouched. Widgets are host-managed and handled separately by
+     * [removeWidgetsForMissingProviders].
+     */
+    fun removeStaleComponents(stillLaunchable: Set<String>): Boolean {
+        return mutate { ws ->
+            val items = ws.items.mapNotNull { item ->
+                when (item) {
+                    is WorkspaceItem.AppIcon ->
+                        if (item.componentKey in stillLaunchable) item else null
+                    is WorkspaceItem.FolderIcon ->
+                        item.copy(itemComponentKeys = item.itemComponentKeys.filter { it in stillLaunchable })
+                    is WorkspaceItem.WidgetIcon -> item
+                }
+            }
+            val dock = ws.dockComponentKeys.filter { it in stillLaunchable }
+            ws.copy(items = items, dockComponentKeys = dock)
+        }
+    }
+
+    /**
+     * Section 22 (v0.4.1): if a widget's provider package is no longer
+     * installed/available, remove the corresponding [WorkspaceItem.WidgetIcon]
+     * so the workspace never renders a dead widget host view. Returns the
+     * set of `appWidgetId`s removed so the caller can also delete the host
+     * binding ([io.relite.home.ui.widget.ReliteAppWidgetHost.removeWidget]).
+     */
+    fun removeWidgetsForMissingProviders(availableProviderPackages: Set<String>): Set<Int> {
+        val staleWidgetIds = workspace.items
+            .filterIsInstance<WorkspaceItem.WidgetIcon>()
+            .filter { it.providerComponent.substringBefore("/") !in availableProviderPackages }
+            .map { it.appWidgetId }
+            .toSet()
+        if (staleWidgetIds.isEmpty()) return emptySet()
+        val committed = mutate { ws ->
+            ws.copy(items = ws.items.filterNot { it is WorkspaceItem.WidgetIcon && it.appWidgetId in staleWidgetIds })
+        }
+        return if (committed) staleWidgetIds else emptySet()
+    }
+
     // --- internals ---
 
     private inline fun updateFolder(folderId: String, transform: (WorkspaceItem.FolderIcon) -> WorkspaceItem.FolderIcon): Boolean {

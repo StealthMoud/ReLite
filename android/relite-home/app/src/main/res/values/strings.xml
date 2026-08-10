@@ -29,6 +29,7 @@
     <string name="action_remove_page">Remove this empty page</string>
     <string name="action_widgets">Widgets</string>
     <string name="no_widgets_available">No widgets available</string>
+    <string name="action_close">Close</string>
     <string name="action_resize_widget">Resize</string>
     <string name="resize_width_minus">Width −</string>
     <string name="resize_width_plus">Width +</string>

@@ -3,8 +3,10 @@ package io.relite.home.ui.widget
 import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -47,7 +49,18 @@ class WidgetPickerActivity : AppCompatActivity() {
         }
     }
 
-    private var pendingProvider: AppWidgetProviderInfo? = null
+    // Section 7: pending flow state must survive Activity recreation (system
+    // bind/configure Activities can and do recreate the caller on low-memory
+    // devices). AppWidgetProviderInfo isn't Parcelable-stable across all API
+    // levels for our purposes, so the provider component is persisted and
+    // re-resolved from AppWidgetManager on restore rather than the object itself.
+    private var pendingProviderComponent: ComponentName? = null
+    private val pendingProvider: AppWidgetProviderInfo?
+        get() {
+            val component = pendingProviderComponent ?: return null
+            return AppWidgetManager.getInstance(this).installedProviders
+                .firstOrNull { it.provider == component }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,23 +68,43 @@ class WidgetPickerActivity : AppCompatActivity() {
         host = app.appWidgetHost // Section 40: reuse the single process-scoped host, never a new one.
         setContentView(R.layout.activity_widget_picker)
 
+        if (savedInstanceState != null) {
+            pendingAppWidgetId = savedInstanceState.getInt(STATE_PENDING_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            val componentString = savedInstanceState.getString(STATE_PENDING_PROVIDER)
+            pendingProviderComponent = componentString?.let { ComponentName.unflattenFromString(it) }
+        }
+
         val providers = AppWidgetManager.getInstance(this).installedProviders
             .sortedBy { it.loadLabel(packageManager).lowercase() }
 
-        findViewById<RecyclerView>(R.id.provider_recycler).apply {
-            layoutManager = LinearLayoutManager(this@WidgetPickerActivity)
-            adapter = WidgetProviderAdapter(packageManager) { provider -> onProviderSelected(provider) }
-        }
+        val recycler = findViewById<RecyclerView>(R.id.provider_recycler)
+        val emptyState = findViewById<View>(R.id.empty_state)
+        val adapter = WidgetProviderAdapter(packageManager) { provider -> onProviderSelected(provider) }
+        recycler.layoutManager = LinearLayoutManager(this@WidgetPickerActivity)
+        recycler.adapter = adapter
+        adapter.submitList(providers)
+
+        findViewById<View>(R.id.empty_state_close).setOnClickListener { finish() }
 
         if (providers.isEmpty()) {
-            Toast.makeText(this, R.string.no_widgets_available, Toast.LENGTH_SHORT).show()
+            recycler.visibility = View.GONE
+            emptyState.visibility = View.VISIBLE
+        } else {
+            recycler.visibility = View.VISIBLE
+            emptyState.visibility = View.GONE
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_PENDING_WIDGET_ID, pendingAppWidgetId)
+        outState.putString(STATE_PENDING_PROVIDER, pendingProviderComponent?.flattenToString())
     }
 
     private fun onProviderSelected(provider: AppWidgetProviderInfo) {
         val appWidgetId = host.allocateId()
         pendingAppWidgetId = appWidgetId
-        pendingProvider = provider
+        pendingProviderComponent = provider.provider
 
         val widgetManager = AppWidgetManager.getInstance(this)
         val alreadyBound = widgetManager.bindAppWidgetIdIfAllowed(appWidgetId, provider.provider)
@@ -128,13 +161,16 @@ class WidgetPickerActivity : AppCompatActivity() {
             host.removeWidget(pendingAppWidgetId)
         }
         pendingAppWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-        pendingProvider = null
+        pendingProviderComponent = null
         // Cancelling one provider's bind/configure step returns to the picker
         // list, not straight back to the workspace — the user may want to
         // try a different widget rather than abandon the flow entirely.
     }
 
     companion object {
+        private const val STATE_PENDING_WIDGET_ID = "pending_widget_id"
+        private const val STATE_PENDING_PROVIDER = "pending_provider"
+
         fun newIntent(activity: Activity): Intent = Intent(activity, WidgetPickerActivity::class.java)
     }
 }

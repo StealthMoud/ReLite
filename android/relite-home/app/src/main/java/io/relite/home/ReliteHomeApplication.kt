@@ -64,25 +64,28 @@ class ReliteHomeApplication : Application() {
         )
         workspaceController = WorkspaceController(workspaceRepository, GRID_SPEC)
         appRepository.onAppsChanged {
-            // A package can disappear (uninstall, or ReLite's own
-            // `pm uninstall --user 0`) at any time; drop any shortcut, dock
-            // entry, or folder membership pointing at it so the workspace
-            // never renders a dead icon (section 20, v0.2.0). Reconciling
-            // against every currently-launchable component on each change
-            // is simpler and more robust than trying to diff exactly which
-            // package went away from a LauncherApps callback's arguments.
-            val launchable = appRepository.loadAll().map { it.packageName }.toSet()
-            val referenced = workspaceController.current().let { ws ->
-                (ws.items.filterIsInstance<io.relite.home.data.WorkspaceItem.AppIcon>().map { it.componentKey } +
-                    ws.items.filterIsInstance<io.relite.home.data.WorkspaceItem.FolderIcon>()
-                        .flatMap { it.itemComponentKeys } +
-                    ws.dockComponentKeys)
-                    .map { it.substringBefore("/") }
-                    .toSet()
-            }
-            for (packageName in referenced - launchable) {
-                workspaceController.removeShortcutsForPackage(packageName)
-            }
+            // Section 20/21 (v0.4.1): reconcile against the exact set of
+            // currently-launchable package/activity components, not just
+            // package names — a package that renamed its launcher activity
+            // (still installed) used to leave a dead shortcut pointing at
+            // the old activity forever. Reconciling on every change against
+            // the full current LauncherApps snapshot is simpler and more
+            // robust than diffing which package/activity changed from a
+            // single callback's arguments.
+            val launchableComponents = appRepository.loadAll().map { it.componentKey }.toSet()
+            workspaceController.removeStaleComponents(launchableComponents)
+
+            // Section 22 (v0.4.1): a widget's provider package can also
+            // disappear independently of any app shortcut referencing it.
+            val availableProviderPackages = launchableComponents.map { it.substringBefore("/") }.toSet()
+            val removedWidgetIds = workspaceController.removeWidgetsForMissingProviders(availableProviderPackages)
+            removedWidgetIds.forEach { appWidgetHost.removeWidget(it) }
+
+            // Section 19 (v0.4.1): any Changed/Removed/Unavailable package
+            // may have altered its icon; a bounded byte-capped cache makes
+            // clearing on every reconciliation cheap enough to not need
+            // per-package diffing here.
+            iconCache.clear()
         }
 
         val launcherApps = getSystemService(LauncherApps::class.java)
