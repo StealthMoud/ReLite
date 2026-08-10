@@ -307,6 +307,22 @@ class WorkspaceControllerTest {
     }
 
     @Test
+    fun `reorderFolderMembers persists the new order`() {
+        val folderId = controller.createFolder("Games", listOf("io.relite.a/Main", "io.relite.b/Main", "io.relite.c/Main"))!!
+        val ok = controller.reorderFolderMembers(folderId, listOf("io.relite.c/Main", "io.relite.a/Main", "io.relite.b/Main"))
+        assertTrue(ok)
+        val folder = controller.current().items.single { it.id == folderId } as WorkspaceItem.FolderIcon
+        assertEquals(listOf("io.relite.c/Main", "io.relite.a/Main", "io.relite.b/Main"), folder.itemComponentKeys)
+    }
+
+    @Test
+    fun `reorderFolderMembers rejects a different member set`() {
+        val folderId = controller.createFolder("Games", listOf("io.relite.a/Main", "io.relite.b/Main"))!!
+        assertFalse(controller.reorderFolderMembers(folderId, listOf("io.relite.a/Main", "io.relite.z/Main")))
+        assertFalse(controller.reorderFolderMembers(folderId, listOf("io.relite.a/Main")))
+    }
+
+    @Test
     fun `renameFolder updates the label`() {
         val folderId = controller.createFolder("Games", emptyList())!!
         assertTrue(controller.renameFolder(folderId, "Utilities"))

@@ -82,12 +82,36 @@ class FolderSheetDialog : DialogFragment() {
         adapter.submitList(folder.itemComponentKeys.mapNotNull { allApps[it] })
     }
 
+    /**
+     * Section 41-42 (v0.4.1): reorder via simple "Move left"/"Move right"
+     * actions rather than an in-folder drag gesture — more reliable for the
+     * common small-folder case, and consistent with the accessibility
+     * fallback already used everywhere else in this launcher (e.g. "Move to
+     * page" instead of raw drag).
+     */
     private fun showMemberMenu(entry: AppEntry, anchor: android.view.View) {
+        val folder = app.workspaceController.current().items
+            .filterIsInstance<io.relite.home.data.WorkspaceItem.FolderIcon>()
+            .find { it.id == folderId } ?: return
+        val index = folder.itemComponentKeys.indexOf(entry.componentKey)
+
         PopupMenu(requireContext(), anchor).apply {
+            if (index > 0) menu.add(Menu.NONE, MENU_ID_MOVE_LEFT, Menu.NONE, R.string.action_move_left)
+            if (index in 0 until folder.itemComponentKeys.size - 1) {
+                menu.add(Menu.NONE, MENU_ID_MOVE_RIGHT, Menu.NONE, R.string.action_move_right)
+            }
             menu.add(Menu.NONE, MENU_ID_REMOVE, Menu.NONE, R.string.action_remove_from_folder)
             menu.add(Menu.NONE, MENU_ID_APP_INFO, Menu.NONE, R.string.action_app_info)
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
+                    MENU_ID_MOVE_LEFT -> {
+                        reorder(folder.itemComponentKeys, index, index - 1)
+                        true
+                    }
+                    MENU_ID_MOVE_RIGHT -> {
+                        reorder(folder.itemComponentKeys, index, index + 1)
+                        true
+                    }
                     MENU_ID_REMOVE -> {
                         app.workspaceController.removeAppFromFolder(folderId, entry.componentKey)
                         onWorkspaceChanged?.invoke()
@@ -106,6 +130,15 @@ class FolderSheetDialog : DialogFragment() {
                 }
             }
         }.show()
+    }
+
+    private fun reorder(current: List<String>, from: Int, to: Int) {
+        val mutable = current.toMutableList()
+        val moved = mutable.removeAt(from)
+        mutable.add(to, moved)
+        app.workspaceController.reorderFolderMembers(folderId, mutable)
+        onWorkspaceChanged?.invoke()
+        refresh()
     }
 
     private fun showRenameDialog() {
@@ -164,6 +197,8 @@ class FolderSheetDialog : DialogFragment() {
         private const val ARG_FOLDER_ID = "folder_id"
         private const val MENU_ID_REMOVE = 1
         private const val MENU_ID_APP_INFO = 2
+        private const val MENU_ID_MOVE_LEFT = 3
+        private const val MENU_ID_MOVE_RIGHT = 4
         private const val MAX_LABEL_LENGTH = 40
 
         fun newInstance(folderId: String): FolderSheetDialog = FolderSheetDialog().apply {

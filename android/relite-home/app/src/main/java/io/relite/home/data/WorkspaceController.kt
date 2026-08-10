@@ -166,6 +166,14 @@ class WorkspaceController(
     fun renameFolder(folderId: String, newLabel: String): Boolean =
         updateFolder(folderId) { it.copy(label = newLabel) }
 
+    /** Section 42 (v0.4.1): reorders a folder's members — same set, no duplicates, or it's rejected. */
+    fun reorderFolderMembers(folderId: String, componentKeys: List<String>): Boolean {
+        val folder = findFolder(folderId) ?: return false
+        if (componentKeys.toSet() != folder.itemComponentKeys.toSet()) return false
+        if (componentKeys.size != folder.itemComponentKeys.size) return false
+        return updateFolder(folderId) { it.copy(itemComponentKeys = componentKeys) }
+    }
+
     fun addAppToFolder(folderId: String, componentKey: String): Boolean =
         updateFolder(folderId) { folder ->
             if (componentKey in folder.itemComponentKeys) return false

@@ -152,7 +152,10 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             val (pkg, activity) = item.componentKey.split("/", limit = 2)
             app.iconCache.get(pkg, activity)
         }
-        is WorkspaceItem.FolderIcon -> null // folder icon is drawn from a themed background, not a package icon
+        is WorkspaceItem.FolderIcon -> {
+            val sizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
+            FolderPreview.render(requireContext(), app.iconCache, item, sizePx)
+        }
         is WorkspaceItem.WidgetIcon -> null
     }
 
