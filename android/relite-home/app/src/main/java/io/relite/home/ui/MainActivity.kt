@@ -1,5 +1,8 @@
 package io.relite.home.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
@@ -8,7 +11,10 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -27,7 +33,9 @@ import io.relite.home.ui.home.DragOverlay
 import io.relite.home.ui.home.HomePagerAdapter
 import io.relite.home.ui.home.PageIndicatorView
 import io.relite.home.ui.home.WorkspaceDockView
+import io.relite.home.ui.motion.MotionTokens
 import io.relite.home.ui.widget.WidgetPickerActivity
+import kotlin.math.abs
 
 /**
  * ReLite Home's single top-level screen: workspace pages + page indicator +
@@ -110,6 +118,17 @@ class MainActivity : AppCompatActivity(), LauncherHost {
         // defaulting to wherever the user currently is, per its own kdoc.
         refreshWorkspace(app.workspaceController.current().defaultPage)
 
+        // Section 33/8 (v0.5.0 completion pass): the Apps fragment is added
+        // exactly once and kept alive (never replaced on every open) so its
+        // search query/sort mode/scroll position survive closing and
+        // reopening Apps within the same process, not just across
+        // recreation. FragmentManager's own saved-state restores it after
+        // process death the same way every other fragment here is restored.
+        if (savedInstanceState == null) {
+            supportFragmentManager.beginTransaction()
+                .add(R.id.drawer_container, AppDrawerFragment(), TAG_DRAWER_FRAGMENT)
+                .commit()
+        }
         drawerContainer.visibility = View.GONE
 
         // ReLite Home is the home screen — back should close the drawer if
@@ -120,9 +139,145 @@ class MainActivity : AppCompatActivity(), LauncherHost {
         onBackPressedDispatcher.addCallback(this) {
             if (editModeOverlay.visibility == View.VISIBLE) {
                 exitEditMode()
-            } else if (drawerContainer.visibility == View.VISIBLE) {
+            } else if (homeSurfaceState != HomeSurfaceState.HOME) {
                 hideAppDrawer()
             }
+        }
+    }
+
+    // --- Home <-> Apps swipe gesture (sections 1-5, v0.5.0 completion pass) ---
+    //
+    // A vertical swipe starting on Home opens Apps; a vertical swipe
+    // starting on Apps (only once its list is scrolled to the top — see
+    // AppDrawerFragment.canSwipeDownToClose) closes it back to Home. Both
+    // follow the finger live via drawerContainer.translationY and settle
+    // open/closed on release based on distance or fling velocity, using
+    // Activity.dispatchTouchEvent so the decision is made *before* any
+    // child view (the pager, a cell's own long-press-drag detector) commits
+    // to handling the gesture itself. Deliberately excluded while an item
+    // drag is already active or Home edit mode is showing — see
+    // isItemDragActive's kdoc for why a real drag is safe to leave
+    // unguarded by timing alone.
+    private var homeSurfaceState = HomeSurfaceState.HOME
+    private var isItemDragActive = false
+    private var swipeClaimed: Boolean? = null
+    private var swipeStartState = HomeSurfaceState.HOME
+    private var swipeDownX = 0f
+    private var swipeDownY = 0f
+    private var velocityTracker: VelocityTracker? = null
+    private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (editModeOverlay.visibility == View.VISIBLE || isItemDragActive) {
+            return super.dispatchTouchEvent(ev)
+        }
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                swipeClaimed = null
+                swipeStartState = homeSurfaceState
+                swipeDownX = ev.rawX
+                swipeDownY = ev.rawY
+                velocityTracker?.recycle()
+                velocityTracker = VelocityTracker.obtain().apply { addMovement(ev) }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                velocityTracker?.addMovement(ev)
+                if (swipeClaimed == null) {
+                    val dx = ev.rawX - swipeDownX
+                    val dy = ev.rawY - swipeDownY
+                    if (abs(dx) > touchSlop || abs(dy) > touchSlop) {
+                        swipeClaimed = decideSwipeClaim(dx, dy)
+                        if (swipeClaimed == true) {
+                            homeSurfaceState = if (swipeStartState == HomeSurfaceState.HOME) {
+                                HomeSurfaceState.DRAGGING_TO_APPS
+                            } else {
+                                HomeSurfaceState.DRAGGING_TO_HOME
+                            }
+                            drawerContainer.visibility = View.VISIBLE
+                            // A child (a cell's long-press-drag detector, the
+                            // pager's own scroll handling) may already be
+                            // mid-press from the DOWN we forwarded normally —
+                            // cancel it now that we're taking over the gesture.
+                            val cancel = MotionEvent.obtain(ev).apply { action = MotionEvent.ACTION_CANCEL }
+                            super.dispatchTouchEvent(cancel)
+                            cancel.recycle()
+                        }
+                    }
+                }
+                if (swipeClaimed == true) {
+                    applySwipeTranslation(ev.rawY - swipeDownY)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (swipeClaimed == true) {
+                    velocityTracker?.addMovement(ev)
+                    velocityTracker?.computeCurrentVelocity(1000)
+                    val velocityY = velocityTracker?.yVelocity ?: 0f
+                    settleSwipe(ev.rawY - swipeDownY, velocityY)
+                    velocityTracker?.recycle()
+                    velocityTracker = null
+                    swipeClaimed = null
+                    return true
+                }
+                velocityTracker?.recycle()
+                velocityTracker = null
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun decideSwipeClaim(dx: Float, dy: Float): Boolean {
+        val verticalDominant = abs(dy) > abs(dx)
+        if (!verticalDominant) return false
+        return when (swipeStartState) {
+            HomeSurfaceState.HOME -> dy < 0
+            HomeSurfaceState.APPS -> dy > 0 && drawerFragment()?.canSwipeDownToClose() != false
+            else -> false
+        }
+    }
+
+    private fun drawerFragment(): AppDrawerFragment? =
+        supportFragmentManager.findFragmentByTag(TAG_DRAWER_FRAGMENT) as? AppDrawerFragment
+
+    private fun applySwipeTranslation(dy: Float) {
+        val height = drawerContainer.height.takeIf { it > 0 } ?: return
+        drawerContainer.translationY = when (swipeStartState) {
+            HomeSurfaceState.HOME -> (height + dy).coerceIn(0f, height.toFloat())
+            else -> dy.coerceIn(0f, height.toFloat())
+        }
+    }
+
+    private fun settleSwipe(dy: Float, velocityY: Float) {
+        val height = drawerContainer.height.takeIf { it > 0 }?.toFloat()
+        if (height == null) {
+            homeSurfaceState = swipeStartState
+            return
+        }
+        val open = if (swipeStartState == HomeSurfaceState.HOME) {
+            (-dy / height) > SWIPE_OPEN_PROGRESS_THRESHOLD || velocityY < -SWIPE_FLING_VELOCITY_THRESHOLD
+        } else {
+            !((dy / height) > SWIPE_OPEN_PROGRESS_THRESHOLD || velocityY > SWIPE_FLING_VELOCITY_THRESHOLD)
+        }
+        animateDrawerTo(open)
+    }
+
+    /** Section 3: sets [homeSurfaceState] to its final value immediately rather than waiting for the animation to finish, so a second gesture/tap right after this one is decided against the real target state, not a stale mid-animation one. */
+    private fun animateDrawerTo(open: Boolean) {
+        val height = drawerContainer.height.toFloat()
+        val start = drawerContainer.translationY
+        val end = if (open) 0f else height
+        homeSurfaceState = if (open) HomeSurfaceState.APPS else HomeSurfaceState.HOME
+        ValueAnimator.ofFloat(start, end).apply {
+            duration = MotionTokens.DURATION_EMPHASIZED_MS
+            interpolator = MotionTokens.EMPHASIZED_EASING
+            addUpdateListener { drawerContainer.translationY = it.animatedValue as Float }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (!open) drawerContainer.visibility = View.GONE
+                }
+            })
+            start()
         }
     }
 
@@ -286,15 +441,15 @@ class MainActivity : AppCompatActivity(), LauncherHost {
     }
 
     private fun showAppDrawer() {
-        if (drawerContainer.visibility == View.VISIBLE) return
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.drawer_container, AppDrawerFragment())
-            .commit()
+        if (homeSurfaceState != HomeSurfaceState.HOME) return
         drawerContainer.visibility = View.VISIBLE
+        drawerContainer.translationY = drawerContainer.height.toFloat().takeIf { it > 0 } ?: 0f
+        animateDrawerTo(open = true)
     }
 
     private fun hideAppDrawer() {
-        drawerContainer.visibility = View.GONE
+        if (homeSurfaceState == HomeSurfaceState.HOME) return
+        animateDrawerTo(open = false)
     }
 
     // --- LauncherHost -------------------------------------------------
@@ -315,11 +470,17 @@ class MainActivity : AppCompatActivity(), LauncherHost {
 
     override fun requestHomeEditMode() = enterEditMode()
 
-    override fun beginDrag(source: View): View = dragOverlay.beginDrag(source)
+    override fun beginDrag(source: View): View {
+        isItemDragActive = true
+        return dragOverlay.beginDrag(source)
+    }
 
     override fun moveDrag(proxy: View, dx: Float, dy: Float) = dragOverlay.moveDrag(proxy, dx, dy)
 
-    override fun endDrag(proxy: View) = dragOverlay.endDrag(proxy)
+    override fun endDrag(proxy: View) {
+        isItemDragActive = false
+        dragOverlay.endDrag(proxy)
+    }
 
     override fun requestAdjacentPage(direction: Int): Int {
         val itemCount = pagerAdapter.itemCount
@@ -461,5 +622,13 @@ class MainActivity : AppCompatActivity(), LauncherHost {
         // dramatic zoom-out; section 68's ~100-500ms motion baseline.
         const val EDIT_MODE_SCALE = 0.92f
         const val EDIT_MODE_ANIM_MS = 200L
+
+        const val TAG_DRAWER_FRAGMENT = "drawer"
+
+        // Section 4 (v0.5.0 completion pass): either signal alone is enough
+        // to complete the swipe — a slow deliberate drag past 40% of the
+        // screen, or a fast flick that hasn't traveled far yet.
+        const val SWIPE_OPEN_PROGRESS_THRESHOLD = 0.4f
+        const val SWIPE_FLING_VELOCITY_THRESHOLD = 800f // px/s
     }
 }

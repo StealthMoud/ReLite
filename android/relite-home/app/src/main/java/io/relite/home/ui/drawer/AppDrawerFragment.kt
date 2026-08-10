@@ -176,6 +176,18 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         dragHelper.attachToRecyclerView(if (showingCustomGrid) recycler else null)
     }
 
+    /**
+     * Section 2 (v0.5.0 completion pass): a swipe-down-to-close gesture must
+     * not fight with scrolling the Alphabetical/search list — only Custom
+     * order's horizontal paging has no vertical scroll to conflict with, so
+     * the vertical list only allows the close gesture once it's already
+     * scrolled to its top (the header is then the only thing left to pull).
+     */
+    fun canSwipeDownToClose(): Boolean {
+        val lm = recycler.layoutManager as? GridLayoutManager ?: return true
+        return lm.orientation == RecyclerView.HORIZONTAL || !recycler.canScrollVertically(-1)
+    }
+
     private fun applyCurrentQuery(): List<AppEntry> {
         if (currentQuery.isNotEmpty()) return AppSearch.search(allApps, currentQuery)
         return when (sortMode) {
