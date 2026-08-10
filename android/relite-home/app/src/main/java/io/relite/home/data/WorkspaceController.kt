@@ -18,10 +18,19 @@ import java.util.UUID
  */
 class WorkspaceController(
     private val repository: WorkspaceRepository,
-    val gridSpec: LauncherGridSpec,
+    private val dockCapacity: Int = LauncherGridSpec.RMX5303.dockCapacity,
 ) {
 
     private var workspace: Workspace = repository.load()
+
+    /**
+     * Section 55-57 (v0.5.0): derived from the current workspace's own
+     * persisted [HomeGridPreset] rather than a constructor-fixed value —
+     * every caller reads this property (never stores the value), so a grid
+     * change ([changeHomeGrid]) takes effect for every consumer without any
+     * of them needing to be notified separately.
+     */
+    val gridSpec: LauncherGridSpec get() = LauncherGridSpec.forGrid(workspace.homeGrid, dockCapacity)
 
     fun current(): Workspace = workspace
 
@@ -132,6 +141,63 @@ class WorkspaceController(
                 }
             }
             ws.copy(pageCount = ws.pageCount - 1, items = shifted)
+        }
+    }
+
+    /**
+     * Section 55-59 (v0.5.0): switches the Home grid preset, reflowing any
+     * item that no longer fits (or now collides) rather than ever dropping
+     * it. An item keeps its exact cell if it's still valid there under the
+     * new grid; otherwise it takes the first free rect on its own page, or —
+     * if nothing fits there — a newly appended page. Processed in
+     * page/row/column order for deterministic placement. This is a
+     * simplified reflow (no separate preview step, no "moved items" report)
+     * chosen over a full GridReflowPlanner architecture because the two
+     * supported presets (4x6, 5x6) rarely require reflow at all: growing
+     * (4x6->5x6) never invalidates an existing position, and shrinking
+     * (5x6->4x6) only ever affects the last column.
+     */
+    fun changeHomeGrid(newPreset: HomeGridPreset): Boolean {
+        if (newPreset == workspace.homeGrid) return true
+        return mutate { ws ->
+            val newSpec = LauncherGridSpec.forGrid(newPreset, gridSpec.dockCapacity)
+            var pageCount = ws.pageCount
+            val placed = mutableListOf<WorkspaceItem>()
+
+            fun isFreeUnder(rect: GridRect): Boolean =
+                rect.isWithinBounds(newSpec, pageCount) && placed.none { GridRect.of(it).intersects(rect) }
+
+            fun firstFreeRectOnPage(page: Int, spanColumns: Int, spanRows: Int): GridRect? {
+                for (row in 0 until newSpec.rows) {
+                    for (column in 0 until newSpec.columns) {
+                        val candidate = GridRect(page, column, row, spanColumns, spanRows)
+                        if (isFreeUnder(candidate)) return candidate
+                    }
+                }
+                return null
+            }
+
+            val ordered = ws.items.sortedWith(
+                compareBy({ it.position.page }, { it.position.row }, { it.position.column }),
+            )
+            for (item in ordered) {
+                val span = spanOf(item)
+                val currentRect = GridRect.of(item.position, span.first, span.second)
+                if (isFreeUnder(currentRect)) {
+                    placed += item
+                    continue
+                }
+                val onOwnPage = firstFreeRectOnPage(item.position.page, span.first, span.second)
+                if (onOwnPage != null) {
+                    placed += withPosition(item, GridPosition(onOwnPage.page, onOwnPage.column, onOwnPage.row))
+                    continue
+                }
+                val newPage = pageCount
+                pageCount += 1
+                placed += withPosition(item, GridPosition(newPage, 0, 0))
+            }
+
+            ws.copy(homeGrid = newPreset, pageCount = pageCount, items = placed)
         }
     }
 

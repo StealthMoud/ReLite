@@ -26,7 +26,15 @@ data class LauncherGridSpec(
     }
 
     companion object {
-        /** Current RMX5303 default — see ReliteHomeApplication / section 18. */
+        /**
+         * Pre-schema-v3 fixed grid, kept only as the historical migration
+         * input and the default dock capacity — the workspace's own
+         * geometry is now [HomeGridPreset]-driven (section 55-57, v0.5.0);
+         * see [forGrid].
+         */
         val RMX5303 = LauncherGridSpec(columns = 4, rows = 5, dockCapacity = 5)
+
+        fun forGrid(preset: HomeGridPreset, dockCapacity: Int = RMX5303.dockCapacity): LauncherGridSpec =
+            LauncherGridSpec(columns = preset.columns, rows = preset.rows, dockCapacity = dockCapacity)
     }
 }

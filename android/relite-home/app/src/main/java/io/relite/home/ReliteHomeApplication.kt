@@ -6,7 +6,6 @@ import android.content.ComponentCallbacks2
 import android.content.pm.LauncherApps
 import io.relite.home.data.AppRepository
 import io.relite.home.data.FileStorage
-import io.relite.home.data.LauncherGridSpec
 import io.relite.home.data.WorkspaceController
 import io.relite.home.data.WorkspaceRepository
 import io.relite.home.ui.widget.ReliteAppWidgetHost
@@ -67,9 +66,9 @@ class ReliteHomeApplication : Application() {
 
         workspaceRepository = WorkspaceRepository(
             FileStorage(File(filesDir, "workspace.json")),
-            GRID_SPEC,
+            DOCK_CAPACITY,
         )
-        workspaceController = WorkspaceController(workspaceRepository, GRID_SPEC)
+        workspaceController = WorkspaceController(workspaceRepository, DOCK_CAPACITY)
 
         val launcherApps = getSystemService(LauncherApps::class.java)
         val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
@@ -115,11 +114,11 @@ class ReliteHomeApplication : Application() {
     }
 
     companion object {
-        // Section 18 (v0.4.0): the one authoritative grid geometry —
-        // WorkspaceController and WorkspaceRepository both consume this
-        // same LauncherGridSpec instance, rather than each independently
-        // hardcoding column/row/dock-capacity constants.
-        val GRID_SPEC = LauncherGridSpec.RMX5303
+        // Section 55-57 (v0.5.0): Home grid geometry (columns/rows) is now
+        // per-workspace (Workspace.homeGrid, a HomeGridPreset) rather than a
+        // single process-wide constant — only dock capacity remains fixed
+        // per device here.
+        const val DOCK_CAPACITY = 5
     }
 
     override fun onTrimMemory(level: Int) {

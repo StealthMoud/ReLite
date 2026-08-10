@@ -8,7 +8,10 @@ import org.json.JSONObject
  * Kotlin + org.json only, so it's fully unit testable with a fake Storage
  * — no Context, no Robolectric.
  */
-class WorkspaceRepository(private val storage: Storage, private val gridSpec: LauncherGridSpec = LauncherGridSpec.RMX5303) {
+class WorkspaceRepository(
+    private val storage: Storage,
+    private val dockCapacity: Int = LauncherGridSpec.RMX5303.dockCapacity,
+) {
 
     /**
      * Section 25 (v0.4.0): why the last [load] fell back to an empty
@@ -25,7 +28,7 @@ class WorkspaceRepository(private val storage: Storage, private val gridSpec: La
         val raw = storage.read() ?: return Workspace.empty() // no prior data — genuinely a first run
         return try {
             val workspace = deserialize(raw)
-            val problems = validate(workspace, gridSpec)
+            val problems = validate(workspace, LauncherGridSpec.forGrid(workspace.homeGrid, dockCapacity))
             if (problems.isNotEmpty()) {
                 lastLoadIssue = "structural validation failed: ${problems.joinToString("; ")}"
                 storage.backupCorrupt(raw)
@@ -59,7 +62,7 @@ class WorkspaceRepository(private val storage: Storage, private val gridSpec: La
      * expected to actually reject anything in normal operation.
      */
     fun save(workspace: Workspace): Boolean {
-        if (validate(workspace, gridSpec).isNotEmpty()) return false
+        if (validate(workspace, LauncherGridSpec.forGrid(workspace.homeGrid, dockCapacity)).isNotEmpty()) return false
         return storage.write(serialize(workspace))
     }
 
@@ -89,7 +92,7 @@ class WorkspaceRepository(private val storage: Storage, private val gridSpec: La
         } catch (e: Exception) {
             return ImportResult.Failure("could not parse layout: ${e.message}")
         }
-        val problems = validate(parsed, gridSpec)
+        val problems = validate(parsed, LauncherGridSpec.forGrid(parsed.homeGrid, dockCapacity))
         if (problems.isNotEmpty()) {
             return ImportResult.Failure(problems.joinToString("; "))
         }
@@ -129,6 +132,7 @@ class WorkspaceRepository(private val storage: Storage, private val gridSpec: La
         root.put("schema", SCHEMA_VERSION)
         root.put("pageCount", workspace.pageCount)
         root.put("dock", JSONArray(workspace.dockComponentKeys))
+        root.put("homeGrid", workspace.homeGrid.name)
 
         val items = JSONArray()
         for (item in workspace.items) {
@@ -155,10 +159,19 @@ class WorkspaceRepository(private val storage: Storage, private val gridSpec: La
             items.add(itemFromJson(itemsArray.getJSONObject(i)))
         }
 
+        // Section 56 (v0.5.0): a schema-1/2 file predates homeGrid entirely
+        // and was always the fixed 4x5 grid; FOUR_BY_SIX (4x6) is a strict
+        // superset of that (same columns, one more row), so this migration
+        // never needs to move an existing item — see LauncherGridSpec.RMX5303's
+        // kdoc.
+        val homeGrid = runCatching { HomeGridPreset.valueOf(root.optString("homeGrid", "")) }
+            .getOrDefault(HomeGridPreset.FOUR_BY_SIX)
+
         return Workspace(
             pageCount = root.optInt("pageCount", 1),
             items = items,
             dockComponentKeys = dock,
+            homeGrid = homeGrid,
         )
     }
 
@@ -216,8 +229,11 @@ class WorkspaceRepository(private val storage: Storage, private val gridSpec: La
     }
 
     companion object {
-        private const val SCHEMA_VERSION = 2
-        private val SUPPORTED_SCHEMAS = setOf(1, 2)
+        // Section 55 (v0.5.0): schema 3 adds Workspace.homeGrid. Schemas 1
+        // and 2 remain readable — they simply predate the field and default
+        // to FOUR_BY_SIX on load, see deserialize().
+        private const val SCHEMA_VERSION = 3
+        private val SUPPORTED_SCHEMAS = setOf(1, 2, 3)
         private const val TYPE_APP = "app"
         private const val TYPE_FOLDER = "folder"
         private const val TYPE_WIDGET = "widget"

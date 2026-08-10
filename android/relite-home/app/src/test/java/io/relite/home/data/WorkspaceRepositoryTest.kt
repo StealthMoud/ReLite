@@ -146,7 +146,7 @@ class WorkspaceRepositoryTest {
             {"schema": 2, "pageCount": 1,
              "dock": ["a/A", "b/B", "c/C", "d/D", "e/E", "f/F"], "items": []}
         """.trimIndent()
-        val repo = WorkspaceRepository(InMemoryStorage(tooManyDockEntries), LauncherGridSpec(4, 5, 5))
+        val repo = WorkspaceRepository(InMemoryStorage(tooManyDockEntries), dockCapacity = 5)
         assertTrue(repo.load().dockComponentKeys.isEmpty())
         assertTrue(repo.lastLoadIssue!!.contains("capacity"))
     }
@@ -281,5 +281,24 @@ class WorkspaceRepositoryTest {
 
         assertTrue(!ok)
         assertEquals(0, repo.load().items.size) // storage was never written to
+    }
+
+    // --- schema v3: homeGrid (sections 55-56, v0.5.0) ---
+
+    @Test
+    fun `homeGrid round-trips through save and load`() {
+        val storage = InMemoryStorage()
+        val repo = WorkspaceRepository(storage)
+        repo.save(Workspace.empty().copy(homeGrid = HomeGridPreset.FIVE_BY_SIX))
+
+        assertEquals(HomeGridPreset.FIVE_BY_SIX, repo.load().homeGrid)
+    }
+
+    @Test
+    fun `a schema-2 file without homeGrid defaults to FOUR_BY_SIX on load`() {
+        val v2Json = """{"schema": 2, "pageCount": 1, "dock": [], "items": []}"""
+        val repo = WorkspaceRepository(InMemoryStorage(v2Json))
+
+        assertEquals(HomeGridPreset.FOUR_BY_SIX, repo.load().homeGrid)
     }
 }

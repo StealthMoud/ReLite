@@ -15,8 +15,8 @@ class WorkspaceControllerTest {
 
     @Before
     fun setUp() {
-        repository = WorkspaceRepository(InMemoryStorage(), TEST_SPEC)
-        controller = WorkspaceController(repository, TEST_SPEC)
+        repository = WorkspaceRepository(InMemoryStorage(), TEST_DOCK_CAPACITY)
+        controller = WorkspaceController(repository, TEST_DOCK_CAPACITY)
     }
 
     // --- addApp / removeItem / moveItem ---
@@ -29,7 +29,7 @@ class WorkspaceControllerTest {
         assertEquals(GridPosition(0, 0, 0), item.position)
 
         // persisted, not just in-memory
-        val reloaded = WorkspaceController(repository, TEST_SPEC)
+        val reloaded = WorkspaceController(repository, TEST_DOCK_CAPACITY)
         assertEquals(1, reloaded.current().items.size)
     }
 
@@ -50,7 +50,8 @@ class WorkspaceControllerTest {
 
     @Test
     fun `addApp auto-adds a page once every existing page is full`() {
-        repeat(16) { i -> assertNotNull(controller.addApp("io.relite.app$i/Main")) }
+        val cellCount = controller.gridSpec.columns * controller.gridSpec.rows
+        repeat(cellCount) { i -> assertNotNull(controller.addApp("io.relite.app$i/Main")) }
         assertEquals(1, controller.current().pageCount)
 
         val overflowId = controller.addApp("io.relite.overflow/Main")
@@ -183,7 +184,7 @@ class WorkspaceControllerTest {
     @Test
     fun `canMoveTo is false for an out-of-bounds destination`() {
         val id = controller.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
-        assertFalse(controller.canMoveTo(id, GridPosition(0, TEST_SPEC.columns, 0)))
+        assertFalse(controller.canMoveTo(id, GridPosition(0, controller.gridSpec.columns, 0)))
     }
 
     @Test
@@ -508,13 +509,13 @@ class WorkspaceControllerTest {
         assertNull(
             controller.addWidget(
                 appWidgetId = 1, spanColumns = 3, spanRows = 1, providerComponent = "io.relite.widgets/Clock",
-                position = GridPosition(0, 2, 0), // TEST_SPEC has 4 columns: column 2 + span 3 runs off the edge
+                position = GridPosition(0, 2, 0), // default grid has 4 columns: column 2 + span 3 runs off the edge
             ),
         )
         assertNull(
             controller.addWidget(
-                appWidgetId = 1, spanColumns = 1, spanRows = 3, providerComponent = "io.relite.widgets/Clock",
-                position = GridPosition(0, 0, 2), // TEST_SPEC has 4 rows: row 2 + span 3 runs off the edge
+                appWidgetId = 1, spanColumns = 1, spanRows = 5, providerComponent = "io.relite.widgets/Clock",
+                position = GridPosition(0, 0, 2), // default grid has 6 rows: row 2 + span 5 runs off the edge
             ),
         )
     }
@@ -557,8 +558,8 @@ class WorkspaceControllerTest {
     @Test
     fun `a failed save leaves in-memory state unchanged`() {
         val storage = InMemoryStorage()
-        val repo = WorkspaceRepository(storage, TEST_SPEC)
-        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        val repo = WorkspaceRepository(storage, TEST_DOCK_CAPACITY)
+        val ctrl = WorkspaceController(repo, TEST_DOCK_CAPACITY)
         storage.failWrites = true
 
         val id = ctrl.addApp("io.relite.a/Main")
@@ -571,11 +572,11 @@ class WorkspaceControllerTest {
     @Test
     fun `a failed save while auto-creating a page leaves pageCount unchanged`() {
         val storage = InMemoryStorage()
-        val repo = WorkspaceRepository(storage, TEST_SPEC)
-        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        val repo = WorkspaceRepository(storage, TEST_DOCK_CAPACITY)
+        val ctrl = WorkspaceController(repo, TEST_DOCK_CAPACITY)
         // Fill every cell of the only page so the next addApp must auto-create a page.
-        for (row in 0 until TEST_SPEC.rows) {
-            for (column in 0 until TEST_SPEC.columns) {
+        for (row in 0 until ctrl.gridSpec.rows) {
+            for (column in 0 until ctrl.gridSpec.columns) {
                 assertNotNull(ctrl.addApp("io.relite.filler.$row.$column/Main", GridPosition(0, column, row)))
             }
         }
@@ -592,10 +593,10 @@ class WorkspaceControllerTest {
     @Test
     fun `a failed save while auto-creating a page for a widget leaves pageCount unchanged`() {
         val storage = InMemoryStorage()
-        val repo = WorkspaceRepository(storage, TEST_SPEC)
-        val ctrl = WorkspaceController(repo, TEST_SPEC)
-        for (row in 0 until TEST_SPEC.rows) {
-            for (column in 0 until TEST_SPEC.columns) {
+        val repo = WorkspaceRepository(storage, TEST_DOCK_CAPACITY)
+        val ctrl = WorkspaceController(repo, TEST_DOCK_CAPACITY)
+        for (row in 0 until ctrl.gridSpec.rows) {
+            for (column in 0 until ctrl.gridSpec.columns) {
                 assertNotNull(ctrl.addApp("io.relite.filler.$row.$column/Main", GridPosition(0, column, row)))
             }
         }
@@ -622,8 +623,8 @@ class WorkspaceControllerTest {
     @Test
     fun `a failed save during moveToNewPage leaves pageCount and position unchanged`() {
         val storage = InMemoryStorage()
-        val repo = WorkspaceRepository(storage, TEST_SPEC)
-        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        val repo = WorkspaceRepository(storage, TEST_DOCK_CAPACITY)
+        val ctrl = WorkspaceController(repo, TEST_DOCK_CAPACITY)
         val id = ctrl.addApp("io.relite.a/Main", GridPosition(0, 0, 0))!!
 
         storage.failWrites = true
@@ -659,8 +660,8 @@ class WorkspaceControllerTest {
     @Test
     fun `a failed save during moveHomeAppIntoFolder leaves both the shortcut and folder membership unchanged`() {
         val storage = InMemoryStorage()
-        val repo = WorkspaceRepository(storage, TEST_SPEC)
-        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        val repo = WorkspaceRepository(storage, TEST_DOCK_CAPACITY)
+        val ctrl = WorkspaceController(repo, TEST_DOCK_CAPACITY)
         val folderId = ctrl.createFolder("Games", listOf("io.relite.chess/Main"))!!
         val appId = ctrl.addApp("io.relite.sudoku/Main", GridPosition(0, 1, 0))!!
 
@@ -692,8 +693,8 @@ class WorkspaceControllerTest {
     @Test
     fun `a failed save during convertHomeAppToFolder leaves the original shortcut in place`() {
         val storage = InMemoryStorage()
-        val repo = WorkspaceRepository(storage, TEST_SPEC)
-        val ctrl = WorkspaceController(repo, TEST_SPEC)
+        val repo = WorkspaceRepository(storage, TEST_DOCK_CAPACITY)
+        val ctrl = WorkspaceController(repo, TEST_DOCK_CAPACITY)
         val appId = ctrl.addApp("io.relite.chess/Main", GridPosition(0, 2, 1))!!
 
         storage.failWrites = true
@@ -707,7 +708,50 @@ class WorkspaceControllerTest {
         assertTrue(ctrl.current().items.filterIsInstance<WorkspaceItem.FolderIcon>().isEmpty())
     }
 
+    // --- changeHomeGrid (sections 55-59, v0.5.0) ---
+
+    @Test
+    fun `changeHomeGrid to the same preset is a no-op success`() {
+        assertTrue(controller.changeHomeGrid(HomeGridPreset.FOUR_BY_SIX))
+        assertEquals(HomeGridPreset.FOUR_BY_SIX, controller.current().homeGrid)
+    }
+
+    @Test
+    fun `changeHomeGrid growing the grid never moves an existing item`() {
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 3, 4))!! // valid on 4x6, not on 4x5
+
+        assertTrue(controller.changeHomeGrid(HomeGridPreset.FIVE_BY_SIX))
+
+        assertEquals(GridPosition(0, 3, 4), controller.current().items.single { it.id == id }.position)
+        assertEquals(HomeGridPreset.FIVE_BY_SIX, controller.current().homeGrid)
+    }
+
+    @Test
+    fun `changeHomeGrid shrinking the grid relocates an item that no longer fits instead of dropping it`() {
+        controller.changeHomeGrid(HomeGridPreset.FIVE_BY_SIX)
+        val id = controller.addApp("io.relite.a/Main", GridPosition(0, 4, 0))!! // column 4 only valid on 5 columns
+
+        assertTrue(controller.changeHomeGrid(HomeGridPreset.FOUR_BY_SIX))
+
+        val item = controller.current().items.single { it.id == id }
+        assertTrue(item.position.column < HomeGridPreset.FOUR_BY_SIX.columns) // moved, not lost
+        assertEquals(1, controller.current().items.size)
+    }
+
+    @Test
+    fun `changeHomeGrid never drops an item even when every page is full`() {
+        controller.changeHomeGrid(HomeGridPreset.FIVE_BY_SIX)
+        val cellCount = controller.gridSpec.columns * controller.gridSpec.rows
+        repeat(cellCount) { i -> assertNotNull(controller.addApp("io.relite.app$i/Main")) }
+        assertEquals(1, controller.current().pageCount)
+
+        assertTrue(controller.changeHomeGrid(HomeGridPreset.FOUR_BY_SIX))
+
+        assertEquals(cellCount, controller.current().items.size) // nothing dropped
+        assertTrue(controller.current().pageCount > 1) // overflow items landed on new pages
+    }
+
     private companion object {
-        val TEST_SPEC = LauncherGridSpec(columns = 4, rows = 4, dockCapacity = 5)
+        const val TEST_DOCK_CAPACITY = 5
     }
 }

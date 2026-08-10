@@ -40,11 +40,24 @@ sealed class WorkspaceItem {
     ) : WorkspaceItem()
 }
 
+/**
+ * Section 55-57 (v0.5.0): the two Home grids current One UI (7) actually
+ * offers — see docs/design/one-ui-current-reference.md for the sourced
+ * claim. 4×6 is a strict superset of ReLite's previous fixed 4×5 grid (same
+ * columns, one more row), so migrating a schema-1/2 workspace onto it never
+ * requires moving a single existing item.
+ */
+enum class HomeGridPreset(val columns: Int, val rows: Int) {
+    FOUR_BY_SIX(4, 6),
+    FIVE_BY_SIX(5, 6),
+}
+
 /** The full persisted layout: workspace pages plus the dock. */
 data class Workspace(
     val pageCount: Int,
     val items: List<WorkspaceItem>,
     val dockComponentKeys: List<String>,
+    val homeGrid: HomeGridPreset = HomeGridPreset.FOUR_BY_SIX,
 ) {
     companion object {
         fun empty(pageCount: Int = 1): Workspace = Workspace(pageCount, emptyList(), emptyList())
