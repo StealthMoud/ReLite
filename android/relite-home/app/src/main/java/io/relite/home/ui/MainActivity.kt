@@ -211,6 +211,7 @@ class MainActivity : AppCompatActivity() {
                     refreshWorkspace()
                 }
             },
+            showAppsButton = io.relite.home.util.HomePreference.getShowAppsButton(this),
         )
     }
 

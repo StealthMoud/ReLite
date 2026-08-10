@@ -37,6 +37,17 @@
     <string name="edit_mode_remove_page">Remove this empty page</string>
     <string name="edit_mode_page_removed">Page removed</string>
     <string name="edit_mode_page_not_removable">Only an empty page (not the first) can be removed</string>
+    <string name="settings_section_home_screen">Home screen</string>
+    <string name="settings_section_style">App and widget style</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_backup">Layout backup</string>
+    <string name="settings_section_apps_screen">Apps screen</string>
+    <string name="settings_home_grid">Home screen grid</string>
+    <string name="settings_home_grid_4x6">4 × 6</string>
+    <string name="settings_home_grid_5x6">5 × 6</string>
+    <string name="settings_show_apps_button">Show Apps screen button</string>
+    <string name="settings_show_app_labels">Show app labels</string>
+    <string name="settings_home_grid_changed">Home screen grid updated</string>
     <string name="action_move_to_page">Move to page…</string>
     <string name="new_page_option">New page</string>
     <string name="page_label">Page %1$d</string>

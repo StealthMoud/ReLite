@@ -47,6 +47,8 @@ class WorkspaceDockView @JvmOverloads constructor(
         onAppInfo: (String) -> Unit = {},
         onReorder: (List<String>) -> Unit = {},
         onAddToHome: (String) -> Unit = {},
+        // Section 78/82 (v0.5.0): Home Settings toggle — see HomePreference's kdoc for the default.
+        showAppsButton: Boolean = true,
     ) {
         this.componentKeys = componentKeys
         removeAllViews()
@@ -62,9 +64,11 @@ class WorkspaceDockView @JvmOverloads constructor(
             addView(button)
         }
 
-        val appsButton = inflater.inflate(R.layout.item_dock_apps_button, this, false) as ImageButton
-        appsButton.setOnClickListener { onAppsButtonClick() }
-        addView(appsButton)
+        if (showAppsButton) {
+            val appsButton = inflater.inflate(R.layout.item_dock_apps_button, this, false) as ImageButton
+            appsButton.setOnClickListener { onAppsButtonClick() }
+            addView(appsButton)
+        }
     }
 
     private fun wireDockInteractions(

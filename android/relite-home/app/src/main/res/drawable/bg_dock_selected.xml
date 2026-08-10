@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same as bg_dock but with an accent ring, marking the selected Home grid preset card. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/relite_dock_background" />
+    <corners android:radius="@dimen/dock_corner_radius" />
+    <stroke android:width="2dp" android:color="@color/relite_primary" />
+</shape>

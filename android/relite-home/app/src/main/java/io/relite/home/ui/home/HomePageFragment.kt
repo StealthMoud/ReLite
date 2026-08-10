@@ -110,7 +110,14 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
 
     private fun buildIconView(app: ReliteHomeApplication, item: WorkspaceItem, labels: Map<String, AppEntry>): View {
         val cellView = LayoutInflater.from(requireContext()).inflate(R.layout.item_workspace_icon, grid, false)
-        cellView.findViewById<TextView>(R.id.label).text = labelFor(item, labels)
+        val labelView = cellView.findViewById<TextView>(R.id.label)
+        // Section 74 (v0.5.0): Home Settings "Show app labels" toggle.
+        if (io.relite.home.util.HomePreference.getShowAppLabels(requireContext())) {
+            labelView.visibility = View.VISIBLE
+            labelView.text = labelFor(item, labels)
+        } else {
+            labelView.visibility = View.GONE
+        }
         cellView.findViewById<ImageView>(R.id.icon).setImageDrawable(iconFor(app, item))
         // Section 24: a folder's icon has no visible label text of its own
         // elsewhere to read, so TalkBack needs an explicit description with

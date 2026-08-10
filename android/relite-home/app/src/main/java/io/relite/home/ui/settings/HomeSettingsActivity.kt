@@ -8,13 +8,19 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.RadioGroup
+import android.widget.Switch
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import io.relite.home.R
 import io.relite.home.ReliteHomeApplication
+import io.relite.home.data.HomeGridPreset
 import io.relite.home.data.Workspace
 import io.relite.home.data.WorkspaceRepository
+import io.relite.home.util.AppsPreference
+import io.relite.home.util.AppsSortMode
+import io.relite.home.util.HomePreference
 import io.relite.home.util.ThemeMode
 import io.relite.home.util.ThemePreference
 
@@ -54,8 +60,62 @@ class HomeSettingsActivity : AppCompatActivity() {
         findViewById<android.widget.Button>(R.id.settings_reset).setOnClickListener { confirmReset() }
         findViewById<android.widget.Button>(R.id.settings_default_launcher).setOnClickListener { openDefaultLauncherHelper() }
         findViewById<android.widget.Button>(R.id.settings_about).setOnClickListener { showAbout() }
+        findViewById<android.widget.Button>(R.id.settings_apps_sort).setOnClickListener { showAppsSortChooser() }
 
         setUpThemePicker()
+        setUpHomeGridPicker()
+        setUpToggles()
+    }
+
+    /** Section 55-57/123 (v0.5.0): tappable grid-size cards, reflecting and driving the real persisted Home grid. */
+    private fun setUpHomeGridPicker() {
+        val card4x6 = findViewById<TextView>(R.id.settings_grid_4x6)
+        val card5x6 = findViewById<TextView>(R.id.settings_grid_5x6)
+
+        fun refresh() {
+            val current = app.workspaceController.current().homeGrid
+            card4x6.setBackgroundResource(if (current == HomeGridPreset.FOUR_BY_SIX) R.drawable.bg_dock_selected else R.drawable.bg_dock)
+            card5x6.setBackgroundResource(if (current == HomeGridPreset.FIVE_BY_SIX) R.drawable.bg_dock_selected else R.drawable.bg_dock)
+        }
+        refresh()
+
+        card4x6.setOnClickListener {
+            if (app.workspaceController.changeHomeGrid(HomeGridPreset.FOUR_BY_SIX)) {
+                refresh()
+                Toast.makeText(this, R.string.settings_home_grid_changed, Toast.LENGTH_SHORT).show()
+            }
+        }
+        card5x6.setOnClickListener {
+            if (app.workspaceController.changeHomeGrid(HomeGridPreset.FIVE_BY_SIX)) {
+                refresh()
+                Toast.makeText(this, R.string.settings_home_grid_changed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Section 74/78 (v0.5.0): Home Settings toggles — see HomePreference's kdoc for defaults. */
+    private fun setUpToggles() {
+        val appsButtonSwitch = findViewById<Switch>(R.id.settings_show_apps_button)
+        appsButtonSwitch.isChecked = HomePreference.getShowAppsButton(this)
+        appsButtonSwitch.setOnCheckedChangeListener { _, checked -> HomePreference.setShowAppsButton(this, checked) }
+
+        val appLabelsSwitch = findViewById<Switch>(R.id.settings_show_app_labels)
+        appLabelsSwitch.isChecked = HomePreference.getShowAppLabels(this)
+        appLabelsSwitch.setOnCheckedChangeListener { _, checked -> HomePreference.setShowAppLabels(this, checked) }
+    }
+
+    /** Section 90 (v0.5.0): same Sort chooser as the Apps screen's own "More" menu, reachable from Settings too. */
+    private fun showAppsSortChooser() {
+        val modes = listOf(
+            AppsSortMode.CUSTOM to getString(R.string.sort_custom_order),
+            AppsSortMode.ALPHABETICAL to getString(R.string.sort_alphabetical_order),
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.action_sort)
+            .setItems(modes.map { it.second }.toTypedArray()) { _, which ->
+                AppsPreference.setSortMode(this, modes[which].first)
+            }
+            .show()
     }
 
     /** Section 11-16: explicit theme choice, applied immediately (AppCompat recreates this Activity for us). */
