@@ -298,16 +298,22 @@ class WorkspaceController(
     }
 
     /**
-     * Section 22 (v0.4.1): if a widget's provider package is no longer
-     * installed/available, remove the corresponding [WorkspaceItem.WidgetIcon]
-     * so the workspace never renders a dead widget host view. Returns the
-     * set of `appWidgetId`s removed so the caller can also delete the host
-     * binding ([io.relite.home.ui.widget.ReliteAppWidgetHost.removeWidget]).
+     * Section 8/9 (v0.5.0): if a widget's exact provider component
+     * (`package/providerClass`) is no longer installed/available, remove
+     * the corresponding [WorkspaceItem.WidgetIcon] so the workspace never
+     * renders a dead widget host view. [availableProviderComponents] must
+     * come from `AppWidgetManager.installedProviders`, not from launcher
+     * activities — a valid widget provider need not have one — and the
+     * comparison is exact-component, not package-only, so one provider
+     * disappearing from a multi-provider package doesn't reap a sibling
+     * provider's still-valid widgets. Returns the set of `appWidgetId`s
+     * removed so the caller can also delete the host binding
+     * ([io.relite.home.ui.widget.ReliteAppWidgetHost.removeWidget]).
      */
-    fun removeWidgetsForMissingProviders(availableProviderPackages: Set<String>): Set<Int> {
+    fun removeWidgetsForMissingProviders(availableProviderComponents: Set<String>): Set<Int> {
         val staleWidgetIds = workspace.items
             .filterIsInstance<WorkspaceItem.WidgetIcon>()
-            .filter { it.providerComponent.substringBefore("/") !in availableProviderPackages }
+            .filter { it.providerComponent !in availableProviderComponents }
             .map { it.appWidgetId }
             .toSet()
         if (staleWidgetIds.isEmpty()) return emptySet()

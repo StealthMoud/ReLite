@@ -1,6 +1,7 @@
 package io.relite.home
 
 import android.app.Application
+import android.appwidget.AppWidgetManager
 import android.content.ComponentCallbacks2
 import android.content.pm.LauncherApps
 import io.relite.home.data.AppRepository
@@ -55,14 +56,27 @@ class ReliteHomeApplication : Application() {
         // the wrong theme (section 15).
         ThemePreference.applyToProcess(ThemePreference.get(this))
 
+        // Section 7 (v0.5.0): every dependency the reconciliation listener
+        // below can touch — workspaceController, iconCache, appWidgetHost —
+        // must exist *before* appRepository.start() registers the
+        // LauncherApps callback. The previous order started appRepository
+        // first; a package broadcast delivered in that window would have
+        // hit still-uninitialized `lateinit` properties from the listener
+        // closure and crashed the whole process.
         appRepository = AppRepository(this)
-        appRepository.start()
 
         workspaceRepository = WorkspaceRepository(
             FileStorage(File(filesDir, "workspace.json")),
             GRID_SPEC,
         )
         workspaceController = WorkspaceController(workspaceRepository, GRID_SPEC)
+
+        val launcherApps = getSystemService(LauncherApps::class.java)
+        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
+        iconCache = IconCache(launcherApps, iconSizePx)
+
+        appWidgetHost = ReliteAppWidgetHost(this)
+
         appRepository.onAppsChanged {
             // Section 20/21 (v0.4.1): reconcile against the exact set of
             // currently-launchable package/activity components, not just
@@ -75,10 +89,19 @@ class ReliteHomeApplication : Application() {
             val launchableComponents = appRepository.loadAll().map { it.componentKey }.toSet()
             workspaceController.removeStaleComponents(launchableComponents)
 
-            // Section 22 (v0.4.1): a widget's provider package can also
-            // disappear independently of any app shortcut referencing it.
-            val availableProviderPackages = launchableComponents.map { it.substringBefore("/") }.toSet()
-            val removedWidgetIds = workspaceController.removeWidgetsForMissingProviders(availableProviderPackages)
+            // Section 8/9 (v0.5.0): a valid widget provider does not need a
+            // launcher Activity, so deriving "available provider packages"
+            // from LauncherApps (as v0.4.1 did) is simply wrong — a
+            // widget-only package with no launcher icon would have its
+            // widgets reaped from the workspace on every reconciliation,
+            // even though the provider is still installed and bindable.
+            // AppWidgetManager.installedProviders is the only authoritative
+            // source, compared as exact package/providerClass components.
+            val availableProviderComponents = AppWidgetManager.getInstance(this)
+                .installedProviders
+                .map { it.provider.flattenToString() }
+                .toSet()
+            val removedWidgetIds = workspaceController.removeWidgetsForMissingProviders(availableProviderComponents)
             removedWidgetIds.forEach { appWidgetHost.removeWidget(it) }
 
             // Section 19 (v0.4.1): any Changed/Removed/Unavailable package
@@ -88,11 +111,7 @@ class ReliteHomeApplication : Application() {
             iconCache.clear()
         }
 
-        val launcherApps = getSystemService(LauncherApps::class.java)
-        val iconSizePx = resources.getDimensionPixelSize(R.dimen.icon_size)
-        iconCache = IconCache(launcherApps, iconSizePx)
-
-        appWidgetHost = ReliteAppWidgetHost(this)
+        appRepository.start()
     }
 
     companion object {

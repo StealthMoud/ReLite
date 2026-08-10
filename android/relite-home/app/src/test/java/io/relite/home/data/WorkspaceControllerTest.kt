@@ -441,9 +441,22 @@ class WorkspaceControllerTest {
     @Test
     fun `removeWidgetsForMissingProviders leaves widgets whose provider is still available`() {
         controller.addWidget(appWidgetId = 7, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
-        val removed = controller.removeWidgetsForMissingProviders(setOf("io.relite.widgets"))
+        val removed = controller.removeWidgetsForMissingProviders(setOf("io.relite.widgets/Clock"))
         assertTrue(removed.isEmpty())
         assertEquals(1, controller.current().items.size)
+    }
+
+    @Test
+    fun `removeWidgetsForMissingProviders is exact-component, not package-only`() {
+        // Section 8/9 (v0.5.0): the available set names a sibling provider
+        // in the same package ("Weather", not "Clock") — a package-only
+        // comparison would have wrongly kept the Clock widget since its
+        // package is still present; exact-component comparison correctly
+        // treats Clock as unavailable and removes it.
+        controller.addWidget(appWidgetId = 7, spanColumns = 1, spanRows = 1, providerComponent = "io.relite.widgets/Clock")
+        val removed = controller.removeWidgetsForMissingProviders(setOf("io.relite.widgets/Weather"))
+        assertEquals(setOf(7), removed)
+        assertTrue(controller.current().items.isEmpty())
     }
 
     // --- reload ---

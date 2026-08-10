@@ -1,5 +1,6 @@
 package io.relite.home.ui
 
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.LauncherApps
@@ -224,12 +225,43 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
+    /**
+     * Section 13 (v0.5.0): the canonical safe launch path. A component that
+     * looked launchable at reconciliation time can still fail here — a race
+     * with an in-progress uninstall, a security-restricted target, or a
+     * malformed componentKey a caller shouldn't have produced but that must
+     * not be trusted blindly. On any failure this shows feedback, drops the
+     * dead component from the workspace immediately (rather than waiting for
+     * the next LauncherApps callback, which may never fire for a race like
+     * this), and never crashes the launcher itself.
+     */
     private fun launchApp(componentKey: String) {
-        val (packageName, activityName) = componentKey.split("/", limit = 2)
-        val component = ComponentName(packageName, activityName)
+        val parts = componentKey.split("/", limit = 2)
+        if (parts.size != 2) {
+            onLaunchFailed(componentKey)
+            return
+        }
+        val component = ComponentName(parts[0], parts[1])
         val launcherApps = getSystemService(LauncherApps::class.java)
-        launcherApps.startMainActivity(component, Process.myUserHandle(), null, null)
-        hideAppDrawer()
+        try {
+            launcherApps.startMainActivity(component, Process.myUserHandle(), null, null)
+            hideAppDrawer()
+        } catch (e: ActivityNotFoundException) {
+            onLaunchFailed(componentKey)
+        } catch (e: SecurityException) {
+            onLaunchFailed(componentKey)
+        } catch (e: IllegalArgumentException) {
+            onLaunchFailed(componentKey)
+        } catch (e: IllegalStateException) {
+            onLaunchFailed(componentKey)
+        }
+    }
+
+    private fun onLaunchFailed(componentKey: String) {
+        android.widget.Toast.makeText(this, R.string.app_launch_failed, android.widget.Toast.LENGTH_SHORT).show()
+        val stillLaunchable = app.appRepository.loadAll().map { it.componentKey }.toSet() - componentKey
+        app.workspaceController.removeStaleComponents(stillLaunchable)
+        refreshWorkspace()
     }
 
     private fun openFolder(folder: WorkspaceItem.FolderIcon) {
