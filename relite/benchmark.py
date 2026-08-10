@@ -402,10 +402,22 @@ class ABBenchmarkResult:
                 for s in self.samples
             ],
             "stats": {
-                self.label_a: self.stats_for(self.label_a).to_dict(),
-                self.label_b: self.stats_for(self.label_b).to_dict(),
+                self.label_a: self._stats_dict_or_none(self.label_a),
+                self.label_b: self._stats_dict_or_none(self.label_b),
             },
         }
+
+    def _stats_dict_or_none(self, label: str) -> dict[str, Any] | None:
+        # A label with zero valid samples (e.g. its configured activity
+        # doesn't actually resolve on this device/firmware build) must not
+        # crash serialization of the samples that DID succeed — found
+        # hitting this directly via `relite benchmark-launchers` against a
+        # real device (v0.4.0 ReLite Home validation), where a stale
+        # device.yaml activity name for one target zeroed out its samples.
+        try:
+            return self.stats_for(label).to_dict()
+        except MeasurementFailedError:
+            return None
 
 
 def run_launcher_ab_benchmark(

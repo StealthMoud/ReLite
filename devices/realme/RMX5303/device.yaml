@@ -78,7 +78,16 @@ pss_targets:
   # measured ambient (no activity) since it should never be force-stopped.
   - label: launcher
     package: com.android.launcher3
-    activity: com.android.launcher3.uioverrides.QuickstepLauncher
+    # Corrected against the actual resolvable HOME activity on this
+    # firmware build (`adb shell pm resolve-activity -a
+    # android.intent.action.MAIN -c android.intent.category.HOME`) —
+    # this ROM's stock launcher is realme/Google's SearchLauncherQuickStep
+    # variant, not the plain AOSP QuickstepLauncher class the previous
+    # value assumed. The stale value made every cold-start sample for
+    # this target fail (activity not found), producing zero valid PSS
+    # samples and crashing `relite benchmark-launchers` outright rather
+    # than a bad number.
+    activity: com.android.searchlauncher.SearchLauncher
   - label: systemui
     package: com.android.systemui
   - label: relite_home
