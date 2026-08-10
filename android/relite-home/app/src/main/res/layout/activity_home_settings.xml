@@ -100,6 +100,11 @@
             <Switch android:id="@+id/settings_show_app_labels" style="@style/SettingsSwitch" />
         </LinearLayout>
 
+        <LinearLayout style="@style/SettingsToggleRow">
+            <TextView style="@style/SettingsToggleLabel" android:text="@string/settings_show_widget_labels" />
+            <Switch android:id="@+id/settings_show_widget_labels" style="@style/SettingsSwitch" />
+        </LinearLayout>
+
         <!-- Apps screen -->
         <TextView style="@style/SettingsSectionHeader" android:text="@string/settings_section_apps_screen" />
 

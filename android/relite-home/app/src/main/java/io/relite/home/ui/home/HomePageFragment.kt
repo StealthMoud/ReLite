@@ -11,6 +11,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -167,7 +168,8 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         // The provider's own view usually announces its content, but the
         // hosting cell itself still benefits from a label — falls back to
         // the provider's component name when no friendlier label is known.
-        hostView.contentDescription = item.providerComponent.substringAfterLast(".").ifBlank { item.providerComponent }
+        val providerLabel = resolveWidgetProviderLabel(app, item)
+        hostView.contentDescription = providerLabel
 
         // Section 13-14/43 (v0.5.0): notify the provider of the current
         // rendered size whenever its view is (re)built — including right
@@ -181,7 +183,31 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         // next global layout pass rather than notifying with a stale/zero
         // size.
         notifyWidgetResizeWhenMeasured(app, hostView, item)
-        return hostView
+
+        if (!io.relite.home.util.HomePreference.getShowWidgetLabels(requireContext())) {
+            return hostView
+        }
+
+        // Section 64 (v0.5.0 completion pass): an opt-in overlay, not part
+        // of the widget's own view tree — the AppWidgetHostView is left
+        // completely untouched so its internal RemoteViews updates keep
+        // working exactly as if this wrapper didn't exist.
+        val overlay = FrameLayout(requireContext())
+        overlay.id = View.generateViewId()
+        overlay.addView(hostView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val labelView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.item_widget_label_overlay, overlay, false)
+        (labelView as TextView).text = providerLabel
+        overlay.addView(labelView)
+        return overlay
+    }
+
+    private fun resolveWidgetProviderLabel(app: ReliteHomeApplication, item: WorkspaceItem.WidgetIcon): String {
+        val info = android.appwidget.AppWidgetManager.getInstance(requireContext()).getAppWidgetInfo(item.appWidgetId)
+        val friendly = info?.loadLabel(requireContext().packageManager)
+        return if (!friendly.isNullOrBlank()) friendly else {
+            item.providerComponent.substringAfterLast(".").ifBlank { item.providerComponent }
+        }
     }
 
     private fun notifyWidgetResizeWhenMeasured(

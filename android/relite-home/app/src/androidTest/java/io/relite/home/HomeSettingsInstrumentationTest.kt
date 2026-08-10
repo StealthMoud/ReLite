@@ -61,6 +61,22 @@ class HomeSettingsInstrumentationTest {
         }
     }
 
+    @Test
+    fun theWidgetLabelsToggleReflectsAndPersistsThePreference() {
+        ActivityScenario.launch(HomeSettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertEquals(false, io.relite.home.util.HomePreference.getShowWidgetLabels(activity))
+            }
+            onView(withId(R.id.settings_show_widget_labels)).perform(scrollTo(), click())
+        }
+        // Reopening must reflect the persisted (now-flipped) state, not reset to defaults.
+        ActivityScenario.launch(HomeSettingsActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertEquals(true, io.relite.home.util.HomePreference.getShowWidgetLabels(activity))
+            }
+        }
+    }
+
     @After
     fun tearDown() {
         ActivityScenario.launch(HomeSettingsActivity::class.java).use { scenario ->
@@ -69,6 +85,7 @@ class HomeSettingsInstrumentationTest {
                 app.workspaceController.replaceWorkspace(io.relite.home.data.Workspace.empty())
                 io.relite.home.util.HomePreference.setShowAppLabels(activity, true)
                 io.relite.home.util.HomePreference.setShowAppsButton(activity, true)
+                io.relite.home.util.HomePreference.setShowWidgetLabels(activity, false)
             }
         }
     }

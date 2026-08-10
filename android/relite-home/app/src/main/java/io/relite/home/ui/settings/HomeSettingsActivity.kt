@@ -136,6 +136,13 @@ class HomeSettingsActivity : AppCompatActivity() {
         val appLabelsSwitch = findViewById<Switch>(R.id.settings_show_app_labels)
         appLabelsSwitch.isChecked = HomePreference.getShowAppLabels(this)
         appLabelsSwitch.setOnCheckedChangeListener { _, checked -> HomePreference.setShowAppLabels(this, checked) }
+
+        val widgetLabelsSwitch = findViewById<Switch>(R.id.settings_show_widget_labels)
+        widgetLabelsSwitch.isChecked = HomePreference.getShowWidgetLabels(this)
+        // Same pattern as the icon-size picker above: MainActivity.onResume()
+        // always calls refreshWorkspace(), which rebuilds every cell view
+        // (including widgets) from scratch — no extra notify needed here.
+        widgetLabelsSwitch.setOnCheckedChangeListener { _, checked -> HomePreference.setShowWidgetLabels(this, checked) }
     }
 
     /** Section 90 (v0.5.0): same Sort chooser as the Apps screen's own "More" menu, reachable from Settings too. */

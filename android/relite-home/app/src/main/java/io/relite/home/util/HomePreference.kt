@@ -18,6 +18,7 @@ object HomePreference {
     private const val PREFS_NAME = "relite_home_prefs"
     private const val KEY_SHOW_APP_LABELS = "show_app_labels"
     private const val KEY_SHOW_APPS_BUTTON = "show_apps_button"
+    private const val KEY_SHOW_WIDGET_LABELS = "show_widget_labels"
 
     fun getShowAppLabels(context: Context): Boolean = prefs(context).getBoolean(KEY_SHOW_APP_LABELS, true)
 
@@ -29,6 +30,16 @@ object HomePreference {
 
     fun setShowAppsButton(context: Context, show: Boolean) {
         prefs(context).edit().putBoolean(KEY_SHOW_APPS_BUTTON, show).apply()
+    }
+
+    // Section 64 (v0.5.0 completion pass): off by default — stock widget
+    // providers never expect a launcher-drawn overlay on top of their view,
+    // so this stays an opt-in rather than risking obscuring a widget's own
+    // content for every existing user on upgrade.
+    fun getShowWidgetLabels(context: Context): Boolean = prefs(context).getBoolean(KEY_SHOW_WIDGET_LABELS, false)
+
+    fun setShowWidgetLabels(context: Context, show: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SHOW_WIDGET_LABELS, show).apply()
     }
 
     private fun prefs(context: Context): SharedPreferences =
