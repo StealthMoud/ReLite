@@ -77,11 +77,24 @@ class HomeSettingsActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Section 38 (v0.4.1): `openOutputStream(uri)?.use { ... }` reported
+     * success even when the stream was null — `?.use` on a null receiver
+     * simply evaluates to null without ever throwing, so the surrounding
+     * try/catch never saw a failure. A null/failed stream, or an
+     * OutputStream.close() failure surfaced by `use`, must both be treated
+     * as export failure, not silently swallowed.
+     */
     private fun exportTo(uri: Uri) {
         val json = app.workspaceRepository.exportPortable(app.workspaceController.current())
         val ok = try {
-            contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-            true
+            val stream = contentResolver.openOutputStream(uri)
+            if (stream == null) {
+                false
+            } else {
+                stream.use { it.write(json.toByteArray()) }
+                true
+            }
         } catch (e: Exception) {
             false
         }
@@ -116,9 +129,14 @@ class HomeSettingsActivity : AppCompatActivity() {
             .setTitle(R.string.import_confirm_title)
             .setMessage(getString(R.string.import_confirm_message, appCount, folderCount, result.missingApps.size))
             .setPositiveButton(R.string.ok) { _, _ ->
-                app.workspaceController.replaceWorkspace(result.candidate)
-                Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
-                finish()
+                // Section 39 (v0.4.1): only report success when the
+                // persisted commit actually succeeded.
+                if (app.workspaceController.replaceWorkspace(result.candidate)) {
+                    Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    Toast.makeText(this, getString(R.string.import_failed, getString(R.string.persistence_failed)), Toast.LENGTH_LONG).show()
+                }
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -129,9 +147,13 @@ class HomeSettingsActivity : AppCompatActivity() {
             .setTitle(R.string.reset_confirm_title)
             .setMessage(R.string.reset_confirm_message)
             .setPositiveButton(R.string.ok) { _, _ ->
-                app.workspaceController.replaceWorkspace(Workspace.empty())
-                Toast.makeText(this, R.string.reset_success, Toast.LENGTH_SHORT).show()
-                finish()
+                // Section 40 (v0.4.1): same false-success fix as import.
+                if (app.workspaceController.replaceWorkspace(Workspace.empty())) {
+                    Toast.makeText(this, R.string.reset_success, Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    Toast.makeText(this, R.string.reset_failed, Toast.LENGTH_LONG).show()
+                }
             }
             .setNegativeButton(R.string.cancel, null)
             .show()

@@ -59,5 +59,7 @@
     <string name="reset_confirm_title">Reset Home Layout?</string>
     <string name="reset_confirm_message">This removes every app shortcut, folder, widget, and dock pin from the home screen. Installed apps themselves are not affected.</string>
     <string name="reset_success">Home layout reset</string>
+    <string name="reset_failed">Reset failed — layout was not saved</string>
+    <string name="persistence_failed">layout could not be saved</string>
     <string name="about_message">ReLite Home %1$s\nNo network access, no accounts, no analytics.</string>
 </resources>
