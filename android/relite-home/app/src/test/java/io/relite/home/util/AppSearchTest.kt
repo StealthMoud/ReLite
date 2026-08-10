@@ -39,4 +39,40 @@ class AppSearchTest {
     fun `search with no matches returns empty list`() {
         assertEquals(emptyList<AppEntry>(), AppSearch.search(apps, "zzz-not-present"))
     }
+
+    @Test
+    fun `exact match ranks above a longer prefix match`() {
+        val cam = AppEntry("io.relite.cam", "Main", "Cam")
+        val results = AppSearch.search(listOf(camera, cam), "cam")
+        assertEquals(listOf("Cam", "Camera"), results.map { it.label })
+    }
+
+    @Test
+    fun `a word prefix mid-label ranks above a mere substring`() {
+        val googlePhotos = AppEntry("io.relite.photos", "Main", "Google Photos")
+        val photograph = AppEntry("io.relite.other", "Main", "Xphotographic")
+        val results = AppSearch.search(listOf(photograph, googlePhotos), "photo")
+        assertEquals(listOf("Google Photos", "Xphotographic"), results.map { it.label })
+    }
+
+    @Test
+    fun `every query token must be present, in any order`() {
+        val googlePhotos = AppEntry("io.relite.photos", "Main", "Google Photos")
+        assertEquals(listOf("Google Photos"), AppSearch.search(listOf(googlePhotos), "google ph").map { it.label })
+        assertEquals(listOf("Google Photos"), AppSearch.search(listOf(googlePhotos), "photos google").map { it.label })
+        assertEquals(emptyList<AppEntry>(), AppSearch.search(listOf(googlePhotos), "google maps"))
+    }
+
+    @Test
+    fun `search does not crash on unicode, RTL, or emoji labels`() {
+        val accented = AppEntry("io.relite.a", "Main", "Café Menu")
+        val arabic = AppEntry("io.relite.b", "Main", "تطبيق")
+        val emoji = AppEntry("io.relite.c", "Main", "🎵 Music")
+        val mixed = listOf(accented, arabic, emoji)
+
+        assertEquals(listOf("Café Menu"), AppSearch.search(mixed, "café").map { it.label })
+        assertEquals(listOf("تطبيق"), AppSearch.search(mixed, "تطبيق").map { it.label })
+        assertEquals(listOf("🎵 Music"), AppSearch.search(mixed, "🎵").map { it.label })
+        assertEquals(3, AppSearch.alphabetical(mixed).size) // sorting unicode/RTL/emoji labels must not throw
+    }
 }
