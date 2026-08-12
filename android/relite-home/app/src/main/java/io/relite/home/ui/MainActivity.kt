@@ -1,5 +1,6 @@
 package io.relite.home.ui
 
+import io.relite.home.ui.menu.showOneUi
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
@@ -143,6 +144,30 @@ class MainActivity : AppCompatActivity(), LauncherHost {
                 hideAppDrawer()
             }
         }
+    }
+
+    /**
+     * Pressing Home while this launcher is already foreground must return to
+     * a clean Home surface — close the Apps screen, leave edit mode, and go
+     * back to the default page. That is what every launcher does and what
+     * the Home key means.
+     *
+     * This was missing entirely: with `launchMode="singleTask"` the system
+     * delivers the Home press here as a new Intent, and with no override the
+     * event was simply dropped. Found on the RMX5303 — with the Apps screen
+     * open, pressing Home did nothing at all, leaving no way back to Home
+     * except the Back key or the swipe gesture.
+     */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (editModeOverlay.visibility == View.VISIBLE) exitEditMode()
+        if (homeSurfaceState != HomeSurfaceState.HOME) hideAppDrawer()
+        // Return to the page the user chose as their default, the way a Home
+        // press does on a real launcher, rather than wherever they last
+        // happened to swipe to.
+        val app = application as ReliteHomeApplication
+        val defaultPage = app.workspaceController.current().defaultPage
+        if (pager.currentItem != defaultPage) pager.setCurrentItem(defaultPage, true)
     }
 
     // --- Home <-> Apps swipe gesture (sections 1-5, v0.5.0 completion pass) ---
@@ -498,14 +523,42 @@ class MainActivity : AppCompatActivity(), LauncherHost {
     private fun enterEditMode() {
         rebuildEditModePageStrip()
         editModeOverlay.visibility = View.VISIBLE
-        pager.animate().scaleX(EDIT_MODE_SCALE).scaleY(EDIT_MODE_SCALE).setDuration(EDIT_MODE_ANIM_MS).start()
-        dock.animate().scaleX(EDIT_MODE_SCALE).scaleY(EDIT_MODE_SCALE).setDuration(EDIT_MODE_ANIM_MS).start()
+        // Section 5/73 (v0.5.0 completion pass): the shrink now runs on the
+        // shared emphasized curve rather than the platform default, and the
+        // overlay fades up with it instead of snapping in at full opacity —
+        // the two halves of one transition, not a scale plus a hard cut.
+        // A long-press tick confirms the mode change, matching the same
+        // feedback a drag pickup already gives.
+        scaleWorkspace(EDIT_MODE_SCALE)
+        editModeOverlay.alpha = 0f
+        editModeOverlay.animate().alpha(1f)
+            .setDuration(MotionTokens.DURATION_STANDARD_MS)
+            .setInterpolator(MotionTokens.EMPHASIZED_EASING)
+            .withEndAction(null)
+            .start()
+        editModeOverlay.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
     }
 
     private fun exitEditMode() {
-        editModeOverlay.visibility = View.GONE
-        pager.animate().scaleX(1f).scaleY(1f).setDuration(EDIT_MODE_ANIM_MS).start()
-        dock.animate().scaleX(1f).scaleY(1f).setDuration(EDIT_MODE_ANIM_MS).start()
+        scaleWorkspace(1f)
+        editModeOverlay.animate().alpha(0f)
+            .setDuration(MotionTokens.DURATION_STANDARD_MS)
+            .setInterpolator(MotionTokens.EMPHASIZED_EASING)
+            // Only hide once the fade has actually finished — setting
+            // visibility immediately (as this used to) cut the animation off
+            // at its first frame, so the overlay never appeared to animate
+            // out at all.
+            .withEndAction { editModeOverlay.visibility = View.GONE }
+            .start()
+    }
+
+    private fun scaleWorkspace(scale: Float) {
+        listOf(pager, dock).forEach { view ->
+            view.animate().scaleX(scale).scaleY(scale)
+                .setDuration(MotionTokens.DURATION_STANDARD_MS)
+                .setInterpolator(MotionTokens.EMPHASIZED_EASING)
+                .start()
+        }
     }
 
     /**
@@ -615,7 +668,7 @@ class MainActivity : AppCompatActivity(), LauncherHost {
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     private fun movePage(from: Int, to: Int) {
@@ -642,7 +695,9 @@ class MainActivity : AppCompatActivity(), LauncherHost {
         // Section 113: "workspace scales down slightly" — subtle, not a
         // dramatic zoom-out; section 68's ~100-500ms motion baseline.
         const val EDIT_MODE_SCALE = 0.92f
-        const val EDIT_MODE_ANIM_MS = 200L
+        // The former EDIT_MODE_ANIM_MS (a local 200L) is gone — edit-mode
+        // timing now comes from MotionTokens.DURATION_STANDARD_MS, so this
+        // transition can never drift out of step with the rest again.
 
         const val TAG_DRAWER_FRAGMENT = "drawer"
 

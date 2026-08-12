@@ -23,9 +23,27 @@ class WorkspaceRepository(
     var lastLoadIssue: String? = null
         private set
 
+    /**
+     * True when the last [load] found **no layout file at all** — a genuine
+     * first run, as opposed to a file that existed and happened to contain
+     * an empty workspace.
+     *
+     * That distinction is what lets [DefaultLayout] seed a starting layout
+     * exactly once: a user who deliberately clears their home screen has a
+     * persisted (empty) file, so this stays false and their choice is
+     * respected. A corrupt file is also not a first run — it is preserved
+     * by [Storage.backupCorrupt] and reported via [lastLoadIssue].
+     */
+    var lastLoadWasFirstRun: Boolean = false
+        private set
+
     fun load(): Workspace {
         lastLoadIssue = null
-        val raw = storage.read() ?: return Workspace.empty() // no prior data — genuinely a first run
+        lastLoadWasFirstRun = false
+        val raw = storage.read() ?: run {
+            lastLoadWasFirstRun = true
+            return Workspace.empty() // no prior data — genuinely a first run
+        }
         return try {
             val workspace = deserialize(raw)
             val problems = validate(workspace, LauncherGridSpec.forGrid(workspace.homeGrid, dockCapacity))
@@ -67,17 +85,73 @@ class WorkspaceRepository(
     }
 
     /**
-     * Section 60: a portable layout for export/import — the same schema as
-     * the internal file, but with every [WorkspaceItem.WidgetIcon] dropped.
-     * A widget's `appWidgetId` is a binding specific to this device and this
-     * install; carrying it into an export would be meaningless (or actively
-     * wrong) on any other device, and there is no cross-device equivalent to
-     * restore from — a re-added widget always needs a fresh pick/bind/configure
-     * flow, so there is nothing useful this format could preserve for one
-     * (section 65/66).
+     * Section 60/65-66: a portable layout for export/import. Apps, folders
+     * and the dock serialize exactly as in the internal file; widgets are
+     * carried as device-independent [PortableWidget] descriptors under a
+     * separate top-level `"widgets"` key instead of being dropped, which is
+     * all earlier versions could do.
+     *
+     * The descriptor deliberately omits `appWidgetId` — see [PortableWidget]
+     * for why that number is the one part of a widget that cannot travel.
+     *
+     * **The internal schema is genuinely unchanged at 3, not silently
+     * bumped.** `"widgets"` is written only into an *export*, never into
+     * the internal workspace file (which keeps storing widgets inline, with
+     * their live `appWidgetId`, exactly as before). The key is additive and
+     * strictly ignorable, so an *older* ReLite build reading a newer export
+     * degrades to precisely its existing behavior — layout imports, widgets
+     * are dropped — rather than rejecting the entire file over a schema
+     * number it doesn't recognize. Bumping would have bought nothing and
+     * cost that graceful degradation.
      */
-    fun exportPortable(workspace: Workspace): String =
-        serialize(workspace.copy(items = workspace.items.filterNot { it is WorkspaceItem.WidgetIcon }))
+    fun exportPortable(workspace: Workspace): String {
+        val withoutWidgets = workspace.copy(items = workspace.items.filterNot { it is WorkspaceItem.WidgetIcon })
+        val root = JSONObject(serialize(withoutWidgets))
+        val widgets = JSONArray()
+        workspace.items.filterIsInstance<WorkspaceItem.WidgetIcon>()
+            // A widget whose provider was never recorded (a schema-1 file
+            // that predates providerComponent, see itemFromJson) has nothing
+            // portable to describe — carrying a blank provider would just
+            // produce an unrestorable descriptor on the other side.
+            .filter { it.providerComponent.isNotEmpty() }
+            .forEach { widget ->
+                widgets.put(
+                    JSONObject()
+                        .put("providerComponent", widget.providerComponent)
+                        .put("position", positionToJson(widget.position))
+                        .put("spanColumns", widget.spanColumns)
+                        .put("spanRows", widget.spanRows),
+                )
+            }
+        root.put("widgets", widgets)
+        return root.toString()
+    }
+
+    /**
+     * Parses the `"widgets"` key [exportPortable] writes. An export from
+     * any earlier version has no such key at all and yields an empty list,
+     * which is exactly the old "import carries no widgets" behavior.
+     *
+     * Malformed individual descriptors are skipped rather than failing the
+     * whole import: a layout file's apps and folders are still worth
+     * restoring even if one widget entry is unreadable.
+     */
+    internal fun parsePortableWidgets(raw: String): List<PortableWidget> {
+        val array = runCatching { JSONObject(raw).optJSONArray("widgets") }.getOrNull() ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            runCatching {
+                val json = array.getJSONObject(i)
+                val provider = json.getString("providerComponent")
+                if (!COMPONENT_KEY_RE.matches(provider)) return@runCatching null
+                PortableWidget(
+                    providerComponent = provider,
+                    position = positionFromJson(json.getJSONObject("position")),
+                    spanColumns = json.getInt("spanColumns"),
+                    spanRows = json.getInt("spanRows"),
+                )
+            }.getOrNull()
+        }
+    }
 
     /**
      * Section 63-65: parses and structurally validates an imported layout,
@@ -117,11 +191,24 @@ class WorkspaceRepository(
         return ImportResult.Success(
             candidate = parsed.copy(items = filteredItems, dockComponentKeys = filteredDock),
             missingApps = missing.toList(),
+            // Section 65-66 (v0.5.0 completion pass): widget descriptors are
+            // returned *alongside* the candidate workspace rather than inside
+            // it, because they are not yet WorkspaceItems and deliberately
+            // cannot be: a WidgetIcon requires a live appWidgetId (validate()
+            // rejects any that lacks one), and no id exists until the caller
+            // actually re-binds the provider on this device. Committing the
+            // candidate and restoring widgets are therefore two separate
+            // steps — see io.relite.home.ui.widget.WidgetRestorer.
+            pendingWidgets = parsePortableWidgets(raw),
         )
     }
 
     sealed class ImportResult {
-        data class Success(val candidate: Workspace, val missingApps: List<String>) : ImportResult()
+        data class Success(
+            val candidate: Workspace,
+            val missingApps: List<String>,
+            val pendingWidgets: List<PortableWidget> = emptyList(),
+        ) : ImportResult()
         data class Failure(val reason: String) : ImportResult()
     }
 

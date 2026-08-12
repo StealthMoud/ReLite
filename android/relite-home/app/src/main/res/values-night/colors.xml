@@ -1,13 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+        Dark theme. Samsung's guide publishes a different "Primary dark" for
+        dark mode than for light — #3e91ff rather than #0072de (One UI Design
+        Guidelines, Visual Design 02. Color, p.63) — because the darker blue
+        loses contrast against a dark background. That distinction is
+        reproduced here rather than reusing the light-theme value.
+
+        Neutrals remain ReLite's own; see the light-theme colors.xml.
+    -->
+    <color name="relite_primary">#3E91FF</color>
+    <color name="relite_primary_dark">#3E91FF</color>
+    <color name="relite_control_activated">#3E91FF</color>
+    <color name="relite_on_primary">#00203F</color>
+
     <color name="relite_background">#121314</color>
     <color name="relite_surface">#1E2022</color>
-    <color name="relite_primary">#6FC7B6</color>
-    <color name="relite_on_primary">#00352C</color>
     <color name="relite_text_primary">#F2F3F4</color>
     <color name="relite_text_secondary">#A9AFB4</color>
-    <color name="relite_dock_background">#232527</color>
+    <!-- Translucent over the wallpaper — see the light-theme colors.xml. -->
+    <color name="relite_dock_background">#C2232527</color>
+    <!-- Opaque menu surface — see the light-theme colors.xml. -->
+    <color name="relite_menu_background">#2B2E30</color>
 
-    <color name="page_indicator_active">#6FC7B6</color>
-    <color name="page_indicator_inactive">#3A3D40</color>
+    <!-- Same fixed white pair as the light theme: this draws on the
+         wallpaper, which has no relation to the app's theme. -->
+    <color name="page_indicator_active">#FFFFFFFF</color>
+    <color name="page_indicator_inactive">#66FFFFFF</color>
+
+    <!-- On-surface variant — see the light-theme colors.xml. -->
+    <color name="page_indicator_active_on_surface">#3E91FF</color>
+    <color name="page_indicator_inactive_on_surface">#3A3D40</color>
 </resources>

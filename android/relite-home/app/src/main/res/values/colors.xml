@@ -1,14 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Original ReLite palette — not a Samsung/One UI color copy. -->
+    <!--
+        Accent colors are the One UI palette as published in Samsung's own
+        "One UI Design Guidelines" (Visual Design 02. Color, p.62-63):
+        Primary #0381fe, Primary dark #0072de (light theme), and Color
+        control activated #3e91ff. Adopted deliberately in the v0.5.0 visual
+        pass — see docs/design/one-ui-current-reference.md and NOTICE.md for
+        what ReLite does and does not take from Samsung. These are published
+        design-guideline color values, not extracted device resources, and
+        no Samsung icon, font, or wallpaper asset ships with this app.
+
+        The neutrals below remain ReLite's own. Samsung's guide describes
+        backgrounds only qualitatively ("simple, calm colors", "monotone in
+        both Light and Dark mode") and publishes no hex values for them, so
+        these are chosen to sit correctly with the accent, not copied.
+    -->
+    <color name="relite_primary">#0381FE</color>
+    <color name="relite_primary_dark">#0072DE</color>
+    <color name="relite_control_activated">#3E91FF</color>
+    <color name="relite_on_primary">#FFFFFF</color>
+
     <color name="relite_background">#F5F6F8</color>
     <color name="relite_surface">#FFFFFF</color>
-    <color name="relite_primary">#2E6F63</color>
-    <color name="relite_on_primary">#FFFFFF</color>
     <color name="relite_text_primary">#1B1C1E</color>
     <color name="relite_text_secondary">#6B7076</color>
-    <color name="relite_dock_background">#E8EAED</color>
+    <!--
+        Translucent, not opaque. The dock sits directly on the wallpaper, and
+        an opaque slab reads as a heavy block cut out of it — obvious once
+        the wallpaper actually rendered (it was previously hidden behind a
+        black window background, so this never showed). One UI's dock is a
+        translucent surface over the wallpaper; the exact alpha is not
+        published in the design guide, so this value is ReLite's judgement
+        rather than a sourced figure.
+    -->
+    <color name="relite_dock_background">#C2E8EAED</color>
 
-    <color name="page_indicator_active">#2E6F63</color>
-    <color name="page_indicator_inactive">#C7CBCF</color>
+    <!--
+        The context-menu card keeps its own *opaque* surface. It previously
+        shared the dock color; once that went translucent, a menu opened over
+        a busy wallpaper would have had text competing with whatever was
+        behind it. A floating menu has to stay readable regardless of
+        backdrop, so the two roles are now separate colors.
+    -->
+    <color name="relite_menu_background">#E8EAED</color>
+
+    <!--
+        The page indicator draws directly on the wallpaper, so these are
+        fixed white/translucent-white rather than theme neutrals. The old
+        theme-coloured pair vanished whenever the wallpaper happened to
+        match it — the same problem the home icon labels had (see
+        HomeIconLabel).
+    -->
+    <color name="page_indicator_active">#FFFFFFFF</color>
+    <color name="page_indicator_inactive">#66FFFFFF</color>
+
+    <!-- On-surface variant, for an indicator over one of the app's own
+         opaque backgrounds (the Apps screen) instead of the wallpaper. -->
+    <color name="page_indicator_active_on_surface">#0381FE</color>
+    <color name="page_indicator_inactive_on_surface">#C7CBCF</color>
 </resources>

@@ -1,18 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="icon_size">52dp</dimen>
-    <dimen name="icon_corner_radius">16dp</dimen>
+    <!--
+        Geometry aligned to Samsung's published "One UI Design Guidelines"
+        in the v0.5.0 visual pass. Two values there are concrete enough to
+        implement directly, and both are sourced:
+
+        - Architecture 04. "Margins and keylines" (p.14): One UI "recommends
+          to allow at minimum 24dp margins on each side", so that touch
+          targets clear rounded/edge screens. -> screen_margin_horizontal.
+        - Visual Design 04. "Thumbnail radius" (p.67): a rounded-corner
+          rectangle used as a focus block or thumbnail should take one of
+          26dp / 20dp / 12dp according to screen grid and target.
+          -> the radius scale below.
+
+        Everything else remains ReLite's own measurement. Samsung publishes
+        no icon-size, cell-padding, dock-height or indicator geometry, so
+        those are not claimed as parity values — see
+        docs/design/one-ui-parity-matrix.md.
+    -->
+
+    <!-- One UI safe-area minimum (Architecture 04, p.14). -->
+    <dimen name="screen_margin_horizontal">24dp</dimen>
+
+    <!-- One UI thumbnail-radius scale (Visual Design 04, p.67). -->
+    <dimen name="radius_large">26dp</dimen>
+    <dimen name="radius_medium">20dp</dimen>
+    <dimen name="radius_small">12dp</dimen>
+
+    <!--
+        One UI icons occupy noticeably more of their cell than the previous
+        52dp did — at 52dp the grid read as sparse, with icons floating in
+        their cells rather than forming the dense field a Samsung home
+        screen shows. The guide publishes no icon dimension, so this is
+        ReLite's own measurement against the real 4x6 cell on the RMX5303,
+        chosen to fill the cell while leaving room for the label beneath.
+    -->
+    <dimen name="icon_size">60dp</dimen>
+    <dimen name="icon_corner_radius">@dimen/radius_small</dimen>
     <dimen name="grid_cell_padding">8dp</dimen>
 
     <dimen name="dock_height">76dp</dimen>
-    <dimen name="dock_corner_radius">28dp</dimen>
-    <dimen name="dock_margin_horizontal">16dp</dimen>
+    <!-- The dock is the largest focus block on Home -> large radius. -->
+    <dimen name="dock_corner_radius">@dimen/radius_large</dimen>
+    <dimen name="dock_margin_horizontal">@dimen/screen_margin_horizontal</dimen>
     <dimen name="dock_margin_bottom">20dp</dimen>
 
     <dimen name="page_indicator_dot_radius">3dp</dimen>
     <dimen name="page_indicator_dot_spacing">14dp</dimen>
 
-    <dimen name="folder_corner_radius">28dp</dimen>
+    <dimen name="folder_corner_radius">@dimen/radius_large</dimen>
     <dimen name="folder_padding">20dp</dimen>
 
     <dimen name="touch_target_min">48dp</dimen>
@@ -22,7 +58,13 @@
     <dimen name="edit_mode_chip_size">48dp</dimen>
     <dimen name="edit_mode_chip_margin">12dp</dimen>
 
-    <dimen name="context_menu_corner_radius">16dp</dimen>
+    <!-- A menu card is a mid-sized focus block -> medium radius. -->
+    <dimen name="context_menu_corner_radius">@dimen/radius_medium</dimen>
     <dimen name="context_menu_padding_horizontal">20dp</dimen>
+    <dimen name="context_menu_padding_vertical">10dp</dimen>
     <dimen name="context_menu_elevation">8dp</dimen>
+    <dimen name="context_menu_edge_margin">8dp</dimen>
+
+    <!-- Inset for bottom-anchored One UI dialogs — see ui/menu/OneUiDialog.kt. -->
+    <dimen name="dialog_margin">12dp</dimen>
 </resources>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A One UI "focus block" — the card-type container the design guide names
+    as its way of grouping and emphasising content (One UI Design Guidelines,
+    Architecture 01. Structure, p.8):
+
+      "One UI supports a card-type container called a 'focus block' which is
+       used to draw the user's eyes to the content that needs to be
+       emphasized on the screen. A focus block's big rounded corners can
+       capture the user's attention visually with its shape. You can make
+       your content stand out even more by creating a high contrast between
+       the focus block's background color and blank space behind them."
+
+    Hence the surface color against the screen's background neutral (the
+    contrast the guide asks for) and radius_large, the top step of the
+    guide's own thumbnail-radius scale (Visual Design 04, p.67).
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/relite_surface" />
+    <corners android:radius="@dimen/radius_large" />
+</shape>

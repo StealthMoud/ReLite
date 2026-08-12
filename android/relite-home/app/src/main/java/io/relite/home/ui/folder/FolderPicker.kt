@@ -1,5 +1,6 @@
 package io.relite.home.ui.folder
 
+import io.relite.home.ui.menu.showOneUi
 import android.app.AlertDialog
 import android.content.Context
 import android.widget.EditText
@@ -37,7 +38,7 @@ object FolderPicker {
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     private fun promptNewFolder(
@@ -69,7 +70,7 @@ object FolderPicker {
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     private fun addToFolder(

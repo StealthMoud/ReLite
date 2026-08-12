@@ -8,6 +8,400 @@ milestones (0.1, 0.2, 1.0).
 
 ## [Unreleased]
 
+A final v0.5.0 completion pass closing the last One UI parity surfaces
+that were still recorded as unimplemented, plus a truth-sync of
+`docs/design/one-ui-parity-matrix.md`, which had drifted — several rows
+still read `LOW (not implemented)` for work that had already shipped in
+an earlier pass. Every change below was built, unit-tested, and run on
+the physical RMX5303.
+
+### Visual pass — real One UI values, from Samsung's published guide
+
+The previous reference doc recorded that no pixel-level One UI values
+were obtainable without a Galaxy handset. That was **wrong**: Samsung
+publishes them. The **One UI Design Guidelines** PDF, distributed openly
+on Samsung's design site for third-party developers, gives concrete
+figures, and the ones it gives are now implemented:
+
+- **24dp minimum side margins** (Architecture 04, p.14) as
+  `screen_margin_horizontal`, applied to the Home grid and dock.
+- **The 26/20/12dp thumbnail-radius scale** (Visual Design 04, p.67) as
+  `radius_large`/`radius_medium`/`radius_small`, mapped to dock+folder /
+  context-menu card / app icons.
+- **The accent palette** (Visual Design 02, p.62-63): Primary `#0381fe`,
+  Primary dark `#0072de` light / `#3e91ff` dark, Color control activated
+  `#3e91ff` — including wiring `colorControlActivated`, without which
+  every Settings switch was drawing in AppCompat's *default* accent
+  rather than this launcher's palette.
+- **Typography**: the guide states One UI's default font is Roboto,
+  which is Android's own system default and what this app already
+  renders in. Exact match, nothing of Samsung's shipped.
+
+`NOTICE.md` and `README.md` are updated to state precisely which values
+are borrowed and from where — the previous "no Samsung color values"
+claim would otherwise have become untrue. No Samsung asset, icon, font,
+wallpaper, or extracted device resource is used; the guide's numbers are
+published developer guidance, not extracted resources. Backgrounds,
+icon sizing, dock/indicator geometry and motion curves stay ReLite's
+own, because the guide publishes no values for them.
+
+### Home screen — a default layout instead of an empty grid
+
+Every release before this opened on a **completely empty home screen**: no
+shortcuts, an empty dock, just wallpaper and the Apps button. That, not
+any spacing or colour detail, was the biggest single reason the launcher
+did not read as a phone home screen at all — a real device ships with the
+common apps already placed and its dock filled.
+
+`DefaultLayout` now seeds a starting layout on first run: Phone,
+Messaging, Browser and Camera in the dock; Contacts, Gallery, Clock,
+Calculator, Calendar, Email, Music, Maps, Store and Settings on page one.
+
+Apps are found by **asking the system which app handles a given job**
+(`ACTION_DIAL`, `CATEGORY_APP_*`, `INTENT_ACTION_STILL_IMAGE_CAMERA`, …),
+never by hardcoded package name — a fixed list would be wrong on every
+device except the one it was written against, and this project targets
+arbitrary phones. Anything that doesn't resolve is skipped, so a device
+without a dialer seeds a shorter layout rather than a broken one, and a
+resolved package is only placed if it actually appears in the launchable
+app list.
+
+Seeding is guarded on "no layout file exists at all"
+(`WorkspaceRepository.lastLoadWasFirstRun`), not "the workspace is
+empty" — a user who deliberately clears their home screen must find it
+still cleared next launch.
+
+### Home legibility and density
+
+- **Labels were unreadable over the wallpaper.** They used the theme's
+  text colour, which is near-white in dark mode and near-black in light
+  mode — so on the RMX5303's bright wallpaper, "Calculator", "Play Store"
+  and "Settings" washed out completely. Home labels are now fixed white
+  with a soft drop shadow (`HomeIconLabel`), which survives both extremes
+  without knowing anything about the image behind them. The drawer keeps
+  the plain theme-coloured label; it draws on an opaque background where
+  a shadow would just be grime.
+- **The page indicator had the same problem** and is now fixed
+  white/translucent-white rather than theme-coloured. It also draws the
+  active page as an **elongated pill** rather than a differently-coloured
+  dot, which is the One UI shape and reads far better as "you are here".
+  A second on-surface palette exists for the Apps screen, whose indicator
+  draws on an opaque background where white-on-white would be invisible.
+- **The Apps screen now has a page indicator at all** — it pages
+  horizontally and previously gave no clue how many pages existed or
+  which was showing. Hidden for a single page and in Alphabetical order,
+  which scrolls vertically and has no pages to indicate.
+- **Icons enlarged** from 52dp to 60dp: at 52dp icons floated in their
+  cells rather than forming the dense field a Samsung home screen shows.
+  The guide publishes no icon dimension, so this is ReLite's own
+  measurement against the real 4×6 cell.
+- **Folder tiles are masked with the same squircle as app icons.** A
+  folder sits in the grid among those icons, so a rounded-rect tile read
+  as the odd one out — the exact mixed-silhouette problem the icon mask
+  was introduced to solve.
+- The widget picker's provider cards are now real focus blocks
+  (`bg_focus_block`) at the 24dp margin; they had been using the dock
+  background, which is now translucent and looked washed out over an
+  opaque screen.
+
+### Dialogs — bottom-anchored, full width, rounded
+
+Samsung's guide is explicit, and it is one of the most recognizable
+differences between a One UI dialog and a stock Android one (Component
+07. Dialog, p.37): *"Provide a dialog pop-up, which requires a user
+action, at the bottom."* Phone dialogs are additionally specified at
+**min width 100%** (p.40). The reasoning is the same one behind One UI's
+Viewing-area / Interaction-area split (Architecture 01, p.7) — anything
+demanding a decision belongs in comfortable thumb reach, not stranded
+mid-screen.
+
+All **16** `AlertDialog`s in the launcher now go through a shared
+`showOneUi()` helper that anchors them to the bottom at full width on a
+rounded surface. Without the explicit background they kept the platform's
+default *square* dialog panel, which put a hard-cornered box in a UI
+whose every other floating surface is rounded.
+
+The guide's one carve-out — a purely informational, non-actionable
+"Loading…" dialog stays centred — has no instance anywhere in this app,
+so no centred variant was written rather than shipping an unused branch.
+
+### Settings — focus blocks instead of a flat list
+
+Architecture 01 (p.8) names One UI's card container directly: *"a
+card-type container called a 'focus block' … A focus block's big rounded
+corners can capture the user's attention visually with its shape. You can
+make your content stand out even more by creating a high contrast between
+the focus block's background color and blank space behind them."*
+
+Settings had section headers but laid its rows straight onto the
+background, which is what made it read as a generic preference list. Each
+group is now a `bg_focus_block` card at the guide's 24dp safe-area margin,
+with its header sitting outside and above it.
+
+Also fixed there: every settings row button was rendering in **ALL CAPS**
+("SORT", "EXPORT LAYOUT") because that is Android's default borderless
+button style. One UI's typography rule is to *"capitalize the first
+letter in every word and sentence … while leaving all other letters as
+lowercase"* (Visual Design 03, p.65) — caps is one of the clearest tells
+of a stock-Android control. A shared `SettingsButton` style sets
+`textAllCaps=false`, and the one string that was mis-cased in the
+resources ("Reset Home Layout") is now "Reset home layout".
+
+Verified against the guide and already compliant, so left alone: the
+edit-mode scrim already dismisses on tap, which is what Component 15
+(p.53) requires of a dimmed area; contextual menus are already dropdown
+menus without a title, per Component 07 (p.39); and no toast uses a
+dismiss-style action button, which Component 13 (p.50) explicitly
+forbids.
+
+### Icons — one consistent squircle silhouette
+
+The single most recognizable property of a One UI home screen, and the
+reason ReLite still read as "not Samsung" after the margins, radii and
+colors were already correct: **every** app icon is presented in the same
+rounded-square silhouette. Samsung's guide states it directly — "One UI
+app icons have square backgrounds with smooth rounded corners and
+outlines" (Visual Design, Iconography).
+
+`IconNormalizer` previously applied no shape at all. An adaptive icon got
+whatever mask the OEM system happened to use; a legacy icon got none. The
+drawer was a mix of hard squares, circles and assorted corner radii,
+which is exactly what One UI does not look like. Now:
+
+- A true **squircle** (superellipse, cubic-Bézier approximation) is
+  clipped over every icon — not a plain rounded rectangle, whose abrupt
+  curvature change at the straight edge is what makes it read as "a
+  rectangle with its corners cut" rather than "soft".
+- **Adaptive icons** have their background/foreground layers drawn
+  manually rather than via `draw()`, which would re-apply the system mask
+  this is meant to override. Layers are placed on the spec's 108dp canvas
+  with the inner 72dp as the visible viewport.
+- **Legacy icons** are composited onto a neutral plate and inset, since
+  they have no separate background layer to mask against — which also
+  subsumes the older brightness/weight compensation this class existed
+  for.
+
+Corner geometry (`CORNER_RATIO`, `SMOOTHING`) is ReLite's own: the guide
+describes the shape but publishes no numbers for it.
+
+### Fixed — the Apps screen had 4 rows instead of 6
+
+`GridLayoutManager`'s span count is measured across the axis
+*perpendicular* to scrolling — the column count when vertical, but the
+**row** count when horizontal, which is what Custom order uses. Both
+paths passed `gridSpec.columns`, so a horizontally-paged Apps page had 4
+rows rather than 6: 16 apps in four sparse bands with large gaps instead
+of a dense 4×6 of 24.
+
+### Fixed — the Home key did nothing
+
+`MainActivity` is `launchMode="singleTask"`, so the system delivers a
+Home press as a new Intent, and there was no `onNewIntent` override at
+all — the event was dropped. With the Apps screen open, pressing Home did
+nothing whatsoever, leaving Back or the swipe gesture as the only way
+out. It now closes the Apps screen, leaves edit mode, and returns to the
+user's chosen default page, which is what the Home key means on any
+launcher.
+
+### Fixed — the app drawer was showing 10 apps out of 405
+
+The most serious bug in this pass, and one that made ReLite Home
+effectively unusable as a real launcher rather than merely imperfect.
+
+`AndroidManifest.xml` declared no `<queries>` element, on the stated
+reasoning that Android "exempts the app holding the default-launcher role
+from package-visibility filtering" when discovery goes through
+`LauncherApps`. That reasoning was tested directly on the RMX5303 and is
+**false on this device**: ReLite was made the genuine `ROLE_HOME` holder
+(`cmd role get-role-holders android.app.role.HOME` → `io.relite.home`),
+its process was restarted so visibility would be recomputed, and the
+drawer still listed the same 10 apps out of 405 installed.
+
+Fixed by declaring the narrow, correct element — a `<queries>` intent for
+`MAIN`/`LAUNCHER`, which makes exactly the apps publishing a launcher
+activity visible. `QUERY_ALL_PACKAGES` remains undeclared and unnecessary:
+it is far broader, is policy-restricted on Play, and would expose apps a
+launcher has no business seeing. After the fix the drawer lists the full
+set.
+
+### Fixed — Home painted a black sheet over the wallpaper
+
+`Theme.ReliteHome.Home` set `windowShowWallpaper=true` with
+`windowBackground=@null`. With `@null` there is no window background
+drawable and the framework falls back to the theme's
+`android:colorBackground` — this launcher's opaque dark neutral — so Home
+rendered solid black while a real `ImageWallpaper` was set and visible
+under every other launcher. Now explicitly
+`@android:color/transparent`, which is what AOSP's own launcher themes
+use, and the status/navigation bar colors are pinned transparent in the
+same theme so nothing opaque can creep back over the wallpaper.
+
+With the wallpaper finally rendering, the dock's opaque fill read as a
+heavy block cut out of it, so `relite_dock_background` is now translucent
+(`#C2`). The context menu, which shared that color, was given its own
+opaque `relite_menu_background` — a floating menu has to stay readable
+whatever the backdrop. The dock alpha is ReLite's judgement; the design
+guide publishes no value for it.
+
+### Fixed — four more, all found by running the app on the RMX5303
+
+None of these were caught by the test suite; all were found by looking at
+the running launcher.
+
+- **Apps screen Custom order rendered as a single full-width column**
+  instead of a paged 4-wide grid. `item_app_drawer`'s `match_parent`
+  width means "fill one span" in a *vertical* `GridLayoutManager`, but
+  Custom order uses a *horizontal* one, where width is the scrolling axis
+  and therefore unconstrained — so every tile took the full viewport
+  width. Fixed with an explicit `DrawerGridAdapter.itemWidthPx`. (The
+  first attempt at the fix set that width from inside a layout pass via
+  `doOnLayout`, where the adapter's `notifyDataSetChanged` is ignored and
+  it silently did nothing; it is now computed from the display width.)
+- **The Apps screen's "More options" and Sort menus were still system
+  `AlertDialog`s** — square-cornered system dialogs in an otherwise fully
+  rounded UI. The v0.5.0 pass replaced the system menu at every
+  *long-press* site and missed these two, which open on a plain click.
+  Both now use the shared `LauncherContextMenu`.
+- **Context menus opened off-screen near screen edges.**
+  `showAsDropDown` always places the card *below* and start-aligned to
+  its anchor, so opening one from the bottom-anchored "More options"
+  button pushed it off the bottom edge, and its width ran off the right.
+  The card is now measured first and flipped above / shifted inboard as
+  needed, with the pop-in pivot following. This also fixes dock-icon
+  long-presses, which had the same latent problem.
+- **A solid blue status bar**, introduced in this very pass by setting
+  `colorPrimaryDark`, which Android maps to the status-bar color. Wrong
+  for a launcher, whose status bar must stay transparent for the
+  wallpaper. Removed, and the Home theme now pins `statusBarColor` and
+  `navigationBarColor` transparent explicitly so this cannot recur.
+
+### Widgets — drag/resize edit mode
+
+- Long-pressing a widget now offers **Edit**, opening a real
+  `WidgetEditOverlayView` with live drag-to-move, corner-handle
+  drag-to-resize, Done and Remove. Both gestures snap to the real
+  measured (non-square) `GridMetrics` and fire a per-snap haptic tick.
+- Implemented as a bitmap-snapshot overlay added as a same-span cell,
+  not as touch handling on the widget itself: an `AppWidgetHostView`
+  owns its own input (its scroll views, its buttons), which is exactly
+  why widgets never had the live drag that apps and folders already did.
+- The existing "Move to page…" / "Resize" dialogs stay in the context
+  menu unchanged, as the accessible non-drag path every other drag
+  affordance in this launcher already has.
+- A real `StackOverflowError` found live on the RMX5303: committing a
+  move/resize removes the overlay, and removing the active touch target
+  makes Android synchronously redeliver `ACTION_CANCEL` to it, which
+  re-entered the same close-and-remove logic until the stack overflowed.
+  Fixed with a re-entrancy guard plus deferring the removal via `post{}`.
+- `WorkspaceGridLayout.updateCellPosition`/`updateCellSpan` reposition an
+  already-added child mid-drag without a remove/re-add cycle.
+
+### Widgets — portable descriptors and rebind on import
+
+Layout export previously **dropped widgets entirely**. It no longer does.
+
+- `exportPortable` now writes a `PortableWidget` descriptor per widget —
+  provider component, grid position, and span — under a separate
+  top-level `"widgets"` key. `importPortable` returns them as
+  `ImportResult.Success.pendingWidgets`.
+- The internal workspace schema stays at **3, deliberately un-bumped**:
+  `"widgets"` is written only into an export, never the internal file,
+  and is strictly ignorable — so an older ReLite build reading a newer
+  export degrades to exactly its old behavior (layout imports, widgets
+  dropped) instead of rejecting the whole file over a schema number.
+- `WidgetRestorer` rebinds them after the imported workspace commits:
+  a silent `bindAppWidgetIdIfAllowed` pass first, then a per-widget
+  system consent queue in `HomeSettingsActivity` for the rest. Every
+  allocated id is released on every failure path.
+- The result is reported **itemised** — restored, restored-but-needs-
+  setting-up-again, provider-not-installed, consent-refused, no-room —
+  rather than a bare "imported" that would let a half-restored layout
+  read as a complete one.
+- The whole in-progress restore survives Activity recreation
+  (`PortableWidget.flatten`/`unflatten` + `WidgetRestorer.Result.saveTo`/
+  `restoreFrom`). The system consent dialog can recreate its caller on a
+  low-memory device — the same hazard `WidgetPickerActivity` already
+  guards its own pending flow against — and without this the queue, the
+  in-flight request and the running tally were all lost: the result
+  callback would return early on a null in-flight, the already-allocated
+  widget id would leak, and every remaining widget would silently never
+  be offered. Found by reviewing this pass's own new code against the
+  standard the widget picker already set, not by a failing test.
+
+Two limits here are platform limits, not gaps, and are documented as
+such: a rebind necessarily allocates a fresh `appWidgetId`, so a
+**configured** widget returns unconfigured (its settings live in the
+provider's storage keyed by the old id); and `BIND_APPWIDGET` is a
+signature/privileged permission, so a third-party launcher can never
+restore silently the way Samsung's own privileged restore path does.
+
+### Motion and haptics
+
+- `MotionTokens` gains a shared `popIn` appear transition (grow + fade
+  from a caller-chosen pivot) and now drives the context menu (pivoted
+  at the anchor it dropped from), folder open, and edit-mode enter/exit.
+- Edit mode's local `EDIT_MODE_ANIM_MS = 200L` is gone; that transition
+  now takes its duration and curve from `MotionTokens`, so it cannot
+  drift out of step with the rest again. Its overlay fade is coordinated
+  with the workspace scale instead of snapping in at full opacity, and
+  exit hides the overlay only once the fade has actually finished —
+  previously `visibility = GONE` cut the animation off at its first frame.
+- Haptics extended: `LONG_PRESS` on context-menu open and edit-mode
+  entry, `KEYBOARD_TAP` per grid snap during a widget move/resize.
+
+### Accessibility
+
+- Fixed-height text rows that would clip at a large system font scale are
+  now `minHeight` + `wrap_content`: context-menu rows (which also gained
+  real vertical padding), the Apps screen search field, and the widget
+  picker's empty-state button. The 48dp touch target is preserved at
+  default scale.
+- The widget edit overlay labels itself for TalkBack and marks its
+  decorative snapshot image `importantForAccessibility="no"`.
+
+### Fixed
+
+- Two dead parameters removed (`HomePageFragment.resolveWidgetProviderLabel`,
+  `WidgetRestorer.consentRequest`); the Kotlin build is now warning-free.
+
+### Verification
+
+- 30 instrumentation tests on the physical RMX5303 (23 before this pass,
+  7 new in `WidgetRestoreInstrumentationTest`) plus the JVM unit suite
+  (`WorkspaceRepositoryTest` now 27 tests). Full suite run three times.
+- Two assumptions about widget binding were **disproved on the device**
+  and are recorded rather than glossed over: a host binding a provider
+  from its *own* package is **not** exempt from the consent requirement,
+  and `adb shell appwidget grantbind` does not work on this unit (exits
+  137, `dumpsys appwidget` shows `Grants:` empty). The consequence is
+  that the silently-granted branch cannot be set up on this hardware, so
+  the system's half of a restore is left honestly undriven; ReLite's own
+  half — descriptor parsing, allocation, exact position/span placement,
+  every failure report, and no leaked host ids — is covered in full,
+  including the post-consent `restoreOne(alreadyBoundId=…)` path.
+
+### Known gaps
+
+- **`HomeSettingsInstrumentationTest.theWidgetLabelsToggleReflectsAndPersistsThePreference`
+  is intermittent** — across this milestone's runs it failed 3 times out
+  of 8 full-suite runs, and passes every time the class is run in
+  isolation. It predates this work. The most likely cause is Espresso
+  resolving a stale window left resumed by an earlier test class (the
+  toggle's click reports success, yet the preference is unchanged
+  afterwards), but that was not confirmed, and no fix is claimed. It is
+  recorded rather than left as an unexplained flake in the history.
+- **Home geometry, theme palette, motion curves, haptic patterns**: still
+  not measured against a real Samsung device, because none was available.
+  These stay `LOW`/`MEDIUM` confidence in the parity matrix. See that
+  document's new "ceiling" section — ReLite deliberately copies no
+  Samsung assets or resource values, so pixel-level parity is a non-goal,
+  not a backlog item.
+- **Performance**: still no jank/frame-timing measurement or fresh
+  controlled A/B against the stock launcher; the v0.4.1 −59.2% PSS figure
+  is not re-validated or claimed for this build.
+- **Release signing**: no real release key exists; packaged artifacts
+  remain debug-signed, honestly labeled as such.
+
 ## [0.5.0] — 2026-08-10
 
 A One UI-inspired transformation pass on ReLite Home on top of v0.4.1's

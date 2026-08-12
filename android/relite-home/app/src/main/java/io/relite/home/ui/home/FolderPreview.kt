@@ -27,6 +27,16 @@ object FolderPreview {
         val background = ContextCompat.getDrawable(context, R.drawable.bg_folder)?.mutate()
         val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
+
+        // Clip to the *same* squircle every app icon is masked with (see
+        // IconNormalizer). A folder sits in the grid among those icons, so a
+        // differently-shaped tile — which is what the plain rounded-rect
+        // folder background gave — reads immediately as the odd one out,
+        // exactly the mixed-silhouette problem the icon mask was added to
+        // solve. The member tiles inside are clipped by the same path, so
+        // the ones in the corners can't spill past the folder's edge.
+        canvas.clipPath(io.relite.home.util.IconNormalizer.squirclePath(sizePx.toFloat()))
+
         background?.setBounds(0, 0, sizePx, sizePx)
         background?.draw(canvas)
 

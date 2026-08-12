@@ -1,5 +1,6 @@
 package io.relite.home.ui.drawer
 
+import io.relite.home.ui.menu.showOneUi
 import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Intent
@@ -153,7 +154,7 @@ class DrawerFolderSheetDialog : DialogFragment() {
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     private fun showAddAppsDialog() {
@@ -193,7 +194,7 @@ class DrawerFolderSheetDialog : DialogFragment() {
             .setView(recycler)
             .setNegativeButton(R.string.cancel, null)
             .create()
-        dialog.show()
+        dialog.showOneUi()
     }
 
     companion object {

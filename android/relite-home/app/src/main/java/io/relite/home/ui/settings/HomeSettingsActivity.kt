@@ -1,5 +1,6 @@
 package io.relite.home.ui.settings
 
+import io.relite.home.ui.menu.showOneUi
 import android.app.AlertDialog
 import android.app.role.RoleManager
 import android.content.Intent
@@ -53,6 +54,11 @@ class HomeSettingsActivity : AppCompatActivity() {
         app = application as ReliteHomeApplication
         setContentView(R.layout.activity_home_settings)
 
+        // Before any ActivityResult callback can fire (they are delivered
+        // after onStart), so a consent answer arriving post-recreation finds
+        // its in-flight request still there.
+        savedInstanceState?.let { restoreWidgetRestoreState(it) }
+
         findViewById<android.widget.Button>(R.id.settings_export).setOnClickListener {
             exportLauncher.launch(getString(R.string.export_layout_filename))
         }
@@ -68,6 +74,11 @@ class HomeSettingsActivity : AppCompatActivity() {
         setUpHomeGridPicker()
         setUpIconSizePicker()
         setUpToggles()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        saveWidgetRestoreState(outState)
     }
 
     /** Section 10-13 (v0.5.0 completion pass): same tappable-card pattern as the Home grid picker. */
@@ -156,7 +167,7 @@ class HomeSettingsActivity : AppCompatActivity() {
             .setItems(modes.map { it.second }.toTypedArray()) { _, which ->
                 AppsPreference.setSortMode(this, modes[which].first)
             }
-            .show()
+            .showOneUi()
     }
 
     /** Section 11-16: explicit theme choice, applied immediately (AppCompat recreates this Activity for us). */
@@ -228,24 +239,211 @@ class HomeSettingsActivity : AppCompatActivity() {
         val folderCount = result.candidate.items.count { it is io.relite.home.data.WorkspaceItem.FolderIcon }
         AlertDialog.Builder(this)
             .setTitle(R.string.import_confirm_title)
-            .setMessage(getString(R.string.import_confirm_message, appCount, folderCount, result.missingApps.size))
+            .setMessage(
+                getString(
+                    R.string.import_confirm_message,
+                    appCount,
+                    folderCount,
+                    result.missingApps.size,
+                    result.pendingWidgets.size,
+                ),
+            )
             .setPositiveButton(R.string.ok) { _, _ ->
                 // Section 39 (v0.4.1): only report success when the
                 // persisted commit actually succeeded.
                 val (ok, removedWidgetIds) = app.workspaceController.replaceWorkspaceSafely(result.candidate)
                 if (ok) {
-                    // Section 44 (v0.5.0): a portable import never carries
-                    // widgets, so every widget the previous layout had is
-                    // now orphaned host state unless explicitly cleaned up.
+                    // Section 44 (v0.5.0): the *previous* layout's widgets are
+                    // orphaned host state once it is replaced, whether or not
+                    // the incoming layout brings any of its own.
                     removedWidgetIds.forEach { app.appWidgetHost.removeWidget(it) }
-                    Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
-                    finish()
+                    // Section 65-66 (v0.5.0 completion pass): restore the
+                    // incoming layout's widgets only after its workspace is
+                    // committed — each rebind mutates that now-current
+                    // workspace, so it cannot run against the candidate.
+                    restoreImportedWidgets(result.pendingWidgets)
                 } else {
                     Toast.makeText(this, getString(R.string.import_failed, getString(R.string.persistence_failed)), Toast.LENGTH_LONG).show()
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
+    }
+
+    // ---- Section 65-66 (v0.5.0 completion pass): imported-widget restore ----
+
+    /**
+     * Descriptors that failed only for lack of the system bind consent, and
+     * are being re-offered one at a time via [widgetConsentLauncher]. A
+     * queue rather than a batch because `ACTION_APPWIDGET_BIND` is inherently
+     * per-widget — the system asks about exactly one provider at a time.
+     */
+    private val widgetConsentQueue = ArrayDeque<io.relite.home.data.PortableWidget>()
+    private var widgetConsentInFlight: Pair<Int, io.relite.home.data.PortableWidget>? = null
+    private var widgetRestoreTally = io.relite.home.ui.widget.WidgetRestorer.Result()
+
+    /**
+     * Section 7/65-66: the whole in-progress restore must survive Activity
+     * recreation. The system bind-consent dialog can recreate its caller on
+     * a low-memory device — exactly the hazard `WidgetPickerActivity`
+     * already guards its own pending flow against — and without this the
+     * queue, the in-flight request and the running tally would all be lost:
+     * [widgetConsentLauncher] would return early on a null in-flight, the
+     * already-allocated widget id would leak, and the remaining widgets
+     * would silently never be offered at all.
+     */
+    private fun saveWidgetRestoreState(outState: Bundle) {
+        if (widgetConsentQueue.isEmpty() && widgetConsentInFlight == null) return
+        outState.putStringArrayList(
+            STATE_WIDGET_CONSENT_QUEUE,
+            ArrayList(widgetConsentQueue.map { it.flatten() }),
+        )
+        widgetConsentInFlight?.let { (appWidgetId, widget) ->
+            outState.putInt(STATE_WIDGET_CONSENT_ID, appWidgetId)
+            outState.putString(STATE_WIDGET_CONSENT_WIDGET, widget.flatten())
+        }
+        widgetRestoreTally.saveTo(outState, STATE_WIDGET_TALLY_PREFIX)
+    }
+
+    private fun restoreWidgetRestoreState(state: Bundle) {
+        val queued = state.getStringArrayList(STATE_WIDGET_CONSENT_QUEUE) ?: return
+        widgetConsentQueue.clear()
+        widgetConsentQueue.addAll(queued.mapNotNull { io.relite.home.data.PortableWidget.unflatten(it) })
+        val inFlightWidget = state.getString(STATE_WIDGET_CONSENT_WIDGET)
+            ?.let { io.relite.home.data.PortableWidget.unflatten(it) }
+        widgetConsentInFlight = inFlightWidget?.let {
+            state.getInt(STATE_WIDGET_CONSENT_ID, android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID) to it
+        }
+        widgetRestoreTally =
+            io.relite.home.ui.widget.WidgetRestorer.Result.restoreFrom(state, STATE_WIDGET_TALLY_PREFIX)
+    }
+
+    private val widgetConsentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { activityResult ->
+        val (appWidgetId, widget) = widgetConsentInFlight ?: return@registerForActivityResult
+        widgetConsentInFlight = null
+        val outcome = if (activityResult.resultCode == RESULT_OK) {
+            io.relite.home.ui.widget.WidgetRestorer.restoreOne(
+                context = this,
+                host = app.appWidgetHost,
+                workspaceController = app.workspaceController,
+                widget = widget,
+                alreadyBoundId = appWidgetId,
+            )
+        } else {
+            // Consent declined: release the id allocated for the request so
+            // a refused restore leaks no host state.
+            app.appWidgetHost.removeWidget(appWidgetId)
+            io.relite.home.ui.widget.WidgetRestorer.Result(
+                skipped = listOf(
+                    io.relite.home.ui.widget.WidgetRestorer.Skipped(
+                        widget,
+                        io.relite.home.ui.widget.WidgetRestorer.SkipReason.BIND_NOT_PERMITTED,
+                    ),
+                ),
+            )
+        }
+        widgetRestoreTally = widgetRestoreTally.merge(outcome)
+        pumpWidgetConsentQueue()
+    }
+
+    private fun restoreImportedWidgets(widgets: List<io.relite.home.data.PortableWidget>) {
+        if (widgets.isEmpty()) {
+            Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+        // Pass one: everything that can come back with no user interaction.
+        val silent = io.relite.home.ui.widget.WidgetRestorer.restoreAll(
+            context = this,
+            host = app.appWidgetHost,
+            workspaceController = app.workspaceController,
+            widgets = widgets,
+        )
+        widgetRestoreTally = silent.copy(
+            skipped = silent.skipped.filterNot {
+                it.reason == io.relite.home.ui.widget.WidgetRestorer.SkipReason.BIND_NOT_PERMITTED
+            },
+        )
+        // Pass two: ask, per widget, for the ones that only lacked consent.
+        widgetConsentQueue.clear()
+        widgetConsentQueue.addAll(silent.awaitingConsent)
+        pumpWidgetConsentQueue()
+    }
+
+    private fun pumpWidgetConsentQueue() {
+        val next = widgetConsentQueue.removeFirstOrNull()
+        if (next == null) {
+            reportWidgetRestore(widgetRestoreTally)
+            return
+        }
+        val request = io.relite.home.ui.widget.WidgetRestorer.consentRequest(app.appWidgetHost, next)
+        if (request == null) {
+            widgetRestoreTally = widgetRestoreTally.merge(
+                io.relite.home.ui.widget.WidgetRestorer.Result(
+                    skipped = listOf(
+                        io.relite.home.ui.widget.WidgetRestorer.Skipped(
+                            next,
+                            io.relite.home.ui.widget.WidgetRestorer.SkipReason.PROVIDER_NOT_INSTALLED,
+                        ),
+                    ),
+                ),
+            )
+            pumpWidgetConsentQueue()
+            return
+        }
+        val (appWidgetId, intent) = request
+        widgetConsentInFlight = appWidgetId to next
+        // A device with no bind-consent UI to launch at all must degrade to
+        // "not restored", never crash the import — the same defense
+        // WidgetPickerActivity.onProviderSelected already applies.
+        runCatching { widgetConsentLauncher.launch(intent) }.onFailure {
+            widgetConsentInFlight = null
+            app.appWidgetHost.removeWidget(appWidgetId)
+            widgetRestoreTally = widgetRestoreTally.merge(
+                io.relite.home.ui.widget.WidgetRestorer.Result(
+                    skipped = listOf(
+                        io.relite.home.ui.widget.WidgetRestorer.Skipped(
+                            next,
+                            io.relite.home.ui.widget.WidgetRestorer.SkipReason.BIND_NOT_PERMITTED,
+                        ),
+                    ),
+                ),
+            )
+            pumpWidgetConsentQueue()
+        }
+    }
+
+    /**
+     * Reports what actually came back, itemised — never a bare "imported"
+     * that would let a half-restored layout read as a complete one.
+     */
+    private fun reportWidgetRestore(result: io.relite.home.ui.widget.WidgetRestorer.Result) {
+        if (result.skipped.isEmpty() && result.restoredUnconfigured.isEmpty()) {
+            Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+        val lines = mutableListOf<String>()
+        if (result.totalRestored > 0) lines += getString(R.string.widget_restore_restored, result.totalRestored)
+        if (result.restoredUnconfigured.isNotEmpty()) {
+            lines += getString(R.string.widget_restore_unconfigured, result.restoredUnconfigured.size)
+        }
+        val byReason = result.skipped.groupBy { it.reason }
+        byReason[io.relite.home.ui.widget.WidgetRestorer.SkipReason.PROVIDER_NOT_INSTALLED]?.let {
+            lines += getString(R.string.widget_restore_missing_provider, it.size)
+        }
+        byReason[io.relite.home.ui.widget.WidgetRestorer.SkipReason.BIND_NOT_PERMITTED]?.let {
+            lines += getString(R.string.widget_restore_not_permitted, it.size)
+        }
+        byReason[io.relite.home.ui.widget.WidgetRestorer.SkipReason.NO_ROOM]?.let {
+            lines += getString(R.string.widget_restore_no_room, it.size)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.widget_restore_title)
+            .setMessage(lines.joinToString("\n"))
+            .setPositiveButton(R.string.ok) { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .showOneUi()
     }
 
     private fun confirmReset() {
@@ -267,7 +465,7 @@ class HomeSettingsActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     private fun openDefaultLauncherHelper() {
@@ -293,6 +491,15 @@ class HomeSettingsActivity : AppCompatActivity() {
             .setTitle(R.string.settings_about)
             .setMessage(getString(R.string.about_message, versionName))
             .setPositiveButton(R.string.ok, null)
-            .show()
+            .showOneUi()
+    }
+
+    private companion object {
+        // Section 7/65-66: saved-instance-state keys for an imported-widget
+        // restore interrupted by Activity recreation.
+        const val STATE_WIDGET_CONSENT_QUEUE = "widget_consent_queue"
+        const val STATE_WIDGET_CONSENT_ID = "widget_consent_id"
+        const val STATE_WIDGET_CONSENT_WIDGET = "widget_consent_widget"
+        const val STATE_WIDGET_TALLY_PREFIX = "widget_tally_"
     }
 }

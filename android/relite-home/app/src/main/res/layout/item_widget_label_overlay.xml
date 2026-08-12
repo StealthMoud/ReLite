@@ -6,7 +6,7 @@
      services on its own since the AppWidgetHostView it's layered onto
      already carries an equivalent contentDescription. -->
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
-    style="@style/AppIconLabel"
+    style="@style/HomeIconLabel"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_gravity="bottom"

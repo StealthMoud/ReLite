@@ -15,7 +15,7 @@
 
         <TextView
             android:id="@+id/expanded_folder_title"
-            style="@style/AppIconLabel"
+            style="@style/HomeIconLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"

@@ -1,5 +1,6 @@
 package io.relite.home.ui.home
 
+import io.relite.home.ui.menu.showOneUi
 import android.appwidget.AppWidgetHostView
 import android.content.Intent
 import android.net.Uri
@@ -24,6 +25,7 @@ import io.relite.home.data.WorkspaceItem
 import io.relite.home.ui.LauncherHost
 import io.relite.home.ui.launcherHost
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 /**
  * One page of the home-screen workspace grid — renders directly into a
@@ -168,7 +170,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         // The provider's own view usually announces its content, but the
         // hosting cell itself still benefits from a label — falls back to
         // the provider's component name when no friendlier label is known.
-        val providerLabel = resolveWidgetProviderLabel(app, item)
+        val providerLabel = resolveWidgetProviderLabel(item)
         hostView.contentDescription = providerLabel
 
         // Section 13-14/43 (v0.5.0): notify the provider of the current
@@ -202,7 +204,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         return overlay
     }
 
-    private fun resolveWidgetProviderLabel(app: ReliteHomeApplication, item: WorkspaceItem.WidgetIcon): String {
+    private fun resolveWidgetProviderLabel(item: WorkspaceItem.WidgetIcon): String {
         val info = android.appwidget.AppWidgetManager.getInstance(requireContext()).getAppWidgetInfo(item.appWidgetId)
         val friendly = info?.loadLabel(requireContext().packageManager)
         return if (!friendly.isNullOrBlank()) friendly else {
@@ -547,6 +549,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 add(io.relite.home.ui.menu.LauncherAction(MENU_ID_APP_INFO, getString(R.string.action_app_info)))
             }
             if (item is WorkspaceItem.WidgetIcon) {
+                add(io.relite.home.ui.menu.LauncherAction(MENU_ID_EDIT_WIDGET, getString(R.string.action_edit_widget)))
                 add(io.relite.home.ui.menu.LauncherAction(MENU_ID_RESIZE_WIDGET, getString(R.string.action_resize_widget)))
             }
             if (item is WorkspaceItem.FolderIcon) {
@@ -559,6 +562,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         }
         io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
             when (actionId) {
+                MENU_ID_EDIT_WIDGET -> if (item is WorkspaceItem.WidgetIcon) showWidgetEditOverlay(app, item, anchor)
                 MENU_ID_REMOVE_FROM_HOME -> {
                     if (item is WorkspaceItem.WidgetIcon) {
                         io.relite.home.ui.widget.WidgetLifecycle.removeWidgetSafely(
@@ -666,7 +670,102 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
             .setTitle(R.string.action_resize_widget)
             .setView(view)
             .setPositiveButton(R.string.done, null)
-            .show()
+            .showOneUi()
+    }
+
+    /**
+     * Section 11 (v0.5.0 completion pass): real drag-to-move and drag-to-
+     * resize for a widget, live and grid-snapped, on a [WidgetEditOverlayView]
+     * rather than the widget's own [AppWidgetHostView] — see that class's
+     * kdoc for why. [showMoveToPageDialog]/[showResizeDialog] remain fully
+     * reachable, unchanged, as the accessible non-drag fallback every other
+     * drag affordance in this launcher already has.
+     */
+    private fun showWidgetEditOverlay(app: ReliteHomeApplication, item: WorkspaceItem.WidgetIcon, cellView: View) {
+        val metrics = grid.currentMetrics() ?: return
+        val gridSpec = app.workspaceController.gridSpec
+
+        var currentColumn = item.position.column
+        var currentRow = item.position.row
+        var currentSpanColumns = item.spanColumns
+        var currentSpanRows = item.spanRows
+
+        val overlay = WidgetEditOverlayView(requireContext(), cellView)
+        cellView.alpha = 0f
+        grid.addCell(overlay, currentColumn, currentRow, currentSpanColumns, currentSpanRows)
+
+        fun close() {
+            grid.removeView(overlay)
+            cellView.alpha = 1f
+        }
+
+        var moveStartColumn = currentColumn
+        var moveStartRow = currentRow
+        overlay.onMoveDragStart = {
+            moveStartColumn = currentColumn
+            moveStartRow = currentRow
+        }
+        overlay.onMoveDrag = { dxPx, dyPx ->
+            val newColumn = (moveStartColumn + (dxPx / metrics.cellWidthPx).roundToInt())
+                .coerceIn(0, gridSpec.columns - currentSpanColumns)
+            val newRow = (moveStartRow + (dyPx / metrics.cellHeightPx).roundToInt())
+                .coerceIn(0, gridSpec.rows - currentSpanRows)
+            if (newColumn != currentColumn || newRow != currentRow) {
+                currentColumn = newColumn
+                currentRow = newRow
+                grid.updateCellPosition(overlay, currentColumn, currentRow)
+                overlay.snapTick()
+            }
+        }
+        overlay.onMoveDragEnd = {
+            val target = GridPosition(pageIndex, currentColumn, currentRow)
+            if (app.workspaceController.moveItem(item.id, target)) {
+                close()
+                host.workspaceChanged()
+            } else {
+                Toast.makeText(requireContext(), R.string.widget_edit_move_no_room, Toast.LENGTH_SHORT).show()
+                currentColumn = item.position.column
+                currentRow = item.position.row
+                grid.updateCellPosition(overlay, currentColumn, currentRow)
+            }
+        }
+
+        var resizeStartSpanColumns = currentSpanColumns
+        var resizeStartSpanRows = currentSpanRows
+        overlay.onResizeDragStart = {
+            resizeStartSpanColumns = currentSpanColumns
+            resizeStartSpanRows = currentSpanRows
+        }
+        overlay.onResizeDrag = { dxPx, dyPx ->
+            val newSpanColumns = (resizeStartSpanColumns + (dxPx / metrics.cellWidthPx).roundToInt())
+                .coerceIn(1, gridSpec.columns - currentColumn)
+            val newSpanRows = (resizeStartSpanRows + (dyPx / metrics.cellHeightPx).roundToInt())
+                .coerceIn(1, gridSpec.rows - currentRow)
+            if (newSpanColumns != currentSpanColumns || newSpanRows != currentSpanRows) {
+                currentSpanColumns = newSpanColumns
+                currentSpanRows = newSpanRows
+                grid.updateCellSpan(overlay, currentSpanColumns, currentSpanRows)
+                overlay.snapTick()
+            }
+        }
+        overlay.onResizeDragEnd = {
+            if (app.workspaceController.resizeWidget(item.id, currentSpanColumns, currentSpanRows)) {
+                close()
+                host.workspaceChanged()
+            } else {
+                Toast.makeText(requireContext(), R.string.widget_edit_resize_no_room, Toast.LENGTH_SHORT).show()
+                currentSpanColumns = item.spanColumns
+                currentSpanRows = item.spanRows
+                grid.updateCellSpan(overlay, currentSpanColumns, currentSpanRows)
+            }
+        }
+
+        overlay.onDoneClicked = { close() }
+        overlay.onRemoveClicked = {
+            io.relite.home.ui.widget.WidgetLifecycle.removeWidgetSafely(app.workspaceController, app.appWidgetHost, item)
+            close()
+            host.workspaceChanged()
+        }
     }
 
     /** Section 19: accessibility/precision fallback to hover-based cross-page drag — always available. */
@@ -690,7 +789,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     companion object {
@@ -703,6 +802,7 @@ class HomePageFragment : Fragment(R.layout.fragment_home_page) {
         private const val MENU_ID_RESIZE_WIDGET = 6
         private const val MENU_ID_ENLARGE_FOLDER = 7
         private const val MENU_ID_SHRINK_FOLDER = 8
+        private const val MENU_ID_EDIT_WIDGET = 9
 
         // Section 2: long enough that grazing the edge mid-drag doesn't
         // accidentally flip a page, short enough to feel responsive when

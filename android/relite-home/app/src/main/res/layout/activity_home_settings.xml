@@ -1,8 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Section 120 (v0.5.0): One UI-like sectioned settings — a large title
-     at the top ("viewing area"), a scrollable body of grouped rows below
-     ("interaction area", section 121) — replacing the previous flat
-     unsectioned button list. -->
+<!--
+    One UI settings structure:
+
+    - A large title in the "viewing area" at the top and the interactive
+      body below it, per the guide's Viewing-area / Interaction-area split
+      (One UI Design Guidelines, Architecture 01. Structure, p.7).
+    - Each group is a **focus block** — a rounded card contrasting against
+      the background neutral (Architecture 01, p.8) — rather than rows laid
+      straight onto the background, which is what this screen did before and
+      is the thing that made it read as a generic preference list rather
+      than a One UI settings screen.
+    - Section headers sit *outside* their card, above it, which is how One UI
+      labels a group.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -18,7 +28,9 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="16dp"
+            android:paddingHorizontal="@dimen/screen_margin_horizontal"
+            android:paddingTop="24dp"
+            android:paddingBottom="16dp"
             android:text="@string/action_home_settings"
             android:textColor="@color/relite_text_primary"
             android:textSize="24sp"
@@ -27,175 +39,172 @@
         <!-- Home screen -->
         <TextView style="@style/SettingsSectionHeader" android:text="@string/settings_section_home_screen" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="16dp"
-            android:paddingTop="8dp"
-            android:text="@string/settings_home_grid"
-            android:textColor="@color/relite_text_primary" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="8dp">
+        <LinearLayout style="@style/SettingsCard">
 
             <TextView
-                android:id="@+id/settings_grid_4x6"
-                style="@style/GridPresetCard"
-                android:layout_marginEnd="8dp"
-                android:text="@string/settings_home_grid_4x6" />
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="16dp"
+                android:paddingTop="8dp"
+                android:text="@string/settings_home_grid"
+                android:textColor="@color/relite_text_primary" />
 
-            <TextView
-                android:id="@+id/settings_grid_5x6"
-                style="@style/GridPresetCard"
-                android:text="@string/settings_home_grid_5x6" />
-        </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="8dp">
 
-        <LinearLayout style="@style/SettingsToggleRow">
-            <TextView style="@style/SettingsToggleLabel" android:text="@string/settings_show_apps_button" />
-            <Switch android:id="@+id/settings_show_apps_button" style="@style/SettingsSwitch" />
+                <TextView
+                    android:id="@+id/settings_grid_4x6"
+                    style="@style/GridPresetCard"
+                    android:layout_marginEnd="8dp"
+                    android:text="@string/settings_home_grid_4x6" />
+
+                <TextView
+                    android:id="@+id/settings_grid_5x6"
+                    style="@style/GridPresetCard"
+                    android:text="@string/settings_home_grid_5x6" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/SettingsToggleRow">
+                <TextView style="@style/SettingsToggleLabel" android:text="@string/settings_show_apps_button" />
+                <Switch android:id="@+id/settings_show_apps_button" style="@style/SettingsSwitch" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- App and widget style -->
         <TextView style="@style/SettingsSectionHeader" android:text="@string/settings_section_style" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="16dp"
-            android:paddingTop="8dp"
-            android:text="@string/settings_icon_size"
-            android:textColor="@color/relite_text_primary" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="8dp">
+        <LinearLayout style="@style/SettingsCard">
 
             <TextView
-                android:id="@+id/settings_icon_size_small"
-                style="@style/GridPresetCard"
-                android:layout_marginEnd="8dp"
-                android:text="@string/settings_icon_size_small" />
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="16dp"
+                android:paddingTop="8dp"
+                android:text="@string/settings_icon_size"
+                android:textColor="@color/relite_text_primary" />
 
-            <TextView
-                android:id="@+id/settings_icon_size_default"
-                style="@style/GridPresetCard"
-                android:layout_marginEnd="8dp"
-                android:text="@string/settings_icon_size_default" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="8dp">
 
-            <TextView
-                android:id="@+id/settings_icon_size_large"
-                style="@style/GridPresetCard"
-                android:text="@string/settings_icon_size_large" />
-        </LinearLayout>
+                <TextView
+                    android:id="@+id/settings_icon_size_small"
+                    style="@style/GridPresetCard"
+                    android:layout_marginEnd="8dp"
+                    android:text="@string/settings_icon_size_small" />
 
-        <LinearLayout style="@style/SettingsToggleRow">
-            <TextView style="@style/SettingsToggleLabel" android:text="@string/settings_show_app_labels" />
-            <Switch android:id="@+id/settings_show_app_labels" style="@style/SettingsSwitch" />
-        </LinearLayout>
+                <TextView
+                    android:id="@+id/settings_icon_size_default"
+                    style="@style/GridPresetCard"
+                    android:layout_marginEnd="8dp"
+                    android:text="@string/settings_icon_size_default" />
 
-        <LinearLayout style="@style/SettingsToggleRow">
-            <TextView style="@style/SettingsToggleLabel" android:text="@string/settings_show_widget_labels" />
-            <Switch android:id="@+id/settings_show_widget_labels" style="@style/SettingsSwitch" />
+                <TextView
+                    android:id="@+id/settings_icon_size_large"
+                    style="@style/GridPresetCard"
+                    android:text="@string/settings_icon_size_large" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/SettingsToggleRow">
+                <TextView style="@style/SettingsToggleLabel" android:text="@string/settings_show_app_labels" />
+                <Switch android:id="@+id/settings_show_app_labels" style="@style/SettingsSwitch" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/SettingsToggleRow">
+                <TextView style="@style/SettingsToggleLabel" android:text="@string/settings_show_widget_labels" />
+                <Switch android:id="@+id/settings_show_widget_labels" style="@style/SettingsSwitch" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- Apps screen -->
         <TextView style="@style/SettingsSectionHeader" android:text="@string/settings_section_apps_screen" />
 
-        <Button
-            android:id="@+id/settings_apps_sort"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="start|center_vertical"
-            android:paddingHorizontal="16dp"
-            android:text="@string/action_sort" />
+        <LinearLayout style="@style/SettingsCard">
+
+            <Button
+                android:id="@+id/settings_apps_sort"
+                style="@style/SettingsButton"
+                android:text="@string/action_sort" />
+        </LinearLayout>
 
         <!-- Appearance -->
         <TextView style="@style/SettingsSectionHeader" android:text="@string/settings_section_appearance" />
 
-        <RadioGroup
-            android:id="@+id/settings_theme_group"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingHorizontal="16dp">
+        <LinearLayout style="@style/SettingsCard">
 
-            <RadioButton
-                android:id="@+id/theme_system"
+            <RadioGroup
+                android:id="@+id/settings_theme_group"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="@string/settings_theme_system" />
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp">
 
-            <RadioButton
-                android:id="@+id/theme_light"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="@string/settings_theme_light" />
+                <RadioButton
+                    android:id="@+id/theme_system"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/settings_theme_system" />
 
-            <RadioButton
-                android:id="@+id/theme_dark"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="@string/settings_theme_dark" />
-        </RadioGroup>
+                <RadioButton
+                    android:id="@+id/theme_light"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/settings_theme_light" />
+
+                <RadioButton
+                    android:id="@+id/theme_dark"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/settings_theme_dark" />
+            </RadioGroup>
+        </LinearLayout>
 
         <!-- Layout backup -->
         <TextView style="@style/SettingsSectionHeader" android:text="@string/settings_section_backup" />
 
-        <Button
-            android:id="@+id/settings_export"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="start|center_vertical"
-            android:paddingHorizontal="16dp"
-            android:text="@string/settings_export_layout" />
+        <LinearLayout style="@style/SettingsCard">
 
-        <Button
-            android:id="@+id/settings_import"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="start|center_vertical"
-            android:paddingHorizontal="16dp"
-            android:text="@string/settings_import_layout" />
+            <Button
+                android:id="@+id/settings_export"
+                style="@style/SettingsButton"
+                android:text="@string/settings_export_layout" />
 
-        <Button
-            android:id="@+id/settings_reset"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="start|center_vertical"
-            android:paddingHorizontal="16dp"
-            android:text="@string/settings_reset_layout" />
+            <Button
+                android:id="@+id/settings_import"
+                style="@style/SettingsButton"
+                android:text="@string/settings_import_layout" />
+
+            <Button
+                android:id="@+id/settings_reset"
+                style="@style/SettingsButton"
+                android:text="@string/settings_reset_layout" />
+        </LinearLayout>
 
         <!-- Default launcher / About -->
         <TextView style="@style/SettingsSectionHeader" android:text="@string/settings_default_launcher" />
 
-        <Button
-            android:id="@+id/settings_default_launcher"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="start|center_vertical"
-            android:paddingHorizontal="16dp"
-            android:text="@string/settings_default_launcher" />
+        <LinearLayout style="@style/SettingsCard">
 
-        <Button
-            android:id="@+id/settings_about"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="start|center_vertical"
-            android:paddingHorizontal="16dp"
-            android:text="@string/settings_about" />
+            <Button
+                android:id="@+id/settings_default_launcher"
+                style="@style/SettingsButton"
+                android:text="@string/settings_default_launcher" />
+
+            <Button
+                android:id="@+id/settings_about"
+                style="@style/SettingsButton"
+                android:text="@string/settings_about" />
+        </LinearLayout>
 
     </LinearLayout>
 </ScrollView>

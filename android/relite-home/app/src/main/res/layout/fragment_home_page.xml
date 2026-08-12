@@ -1,8 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Horizontal padding is One UI's published minimum safe-area margin (24dp
+    per side, One UI Design Guidelines, Architecture 04 "Margins and
+    keylines", p.14) rather than the 8dp cell padding used before, so Home
+    icons sit inboard of a rounded/edge screen the way One UI specifies.
+    Vertical padding stays at the grid's own cell padding — the guidance is
+    about the *sides* of the screen.
+-->
 <io.relite.home.ui.home.WorkspaceGridLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/page_grid"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:clipToPadding="false"
-    android:padding="@dimen/grid_cell_padding" />
+    android:paddingHorizontal="@dimen/screen_margin_horizontal"
+    android:paddingVertical="@dimen/grid_cell_padding" />

@@ -12,7 +12,7 @@
     <string name="dock_full">Dock is full</string>
     <string name="action_delete_folder">Delete</string>
     <string name="action_add_apps">Add apps</string>
-    <string name="action_add_to_folder">Add to Folder</string>
+    <string name="action_add_to_folder">Add to folder</string>
     <string name="action_add_to_apps_folder">Add to Apps folder</string>
     <string name="action_open_folder">Open folder</string>
     <string name="action_remove_from_folder">Remove from folder</string>
@@ -70,6 +70,13 @@
     <string name="action_close">Close</string>
     <string name="stale_widget_label">Widget unavailable</string>
     <string name="action_resize_widget">Resize</string>
+    <string name="action_edit_widget">Edit</string>
+    <string name="widget_edit_done">Done</string>
+    <string name="widget_edit_remove">Remove</string>
+    <string name="widget_edit_resize_handle">Resize handle</string>
+    <string name="widget_edit_body">Widget — drag to move</string>
+    <string name="widget_edit_move_no_room">Can\'t move there — no room</string>
+    <string name="widget_edit_resize_no_room">Can\'t resize — no room</string>
     <string name="resize_width_minus">Width −</string>
     <string name="resize_width_plus">Width +</string>
     <string name="resize_height_minus">Height −</string>
@@ -83,7 +90,7 @@
     <string name="action_home_settings">Home Settings</string>
     <string name="settings_export_layout">Export layout</string>
     <string name="settings_import_layout">Import layout</string>
-    <string name="settings_reset_layout">Reset Home Layout</string>
+    <string name="settings_reset_layout">Reset home layout</string>
     <string name="settings_default_launcher">Default launcher</string>
     <string name="settings_about">About</string>
     <string name="settings_theme">Theme</string>
@@ -95,8 +102,15 @@
     <string name="export_failed">Export failed</string>
     <string name="import_failed">Import failed: %1$s</string>
     <string name="import_confirm_title">Import this layout?</string>
-    <string name="import_confirm_message">%1$d app shortcut(s) and %2$d folder(s) will be imported. %3$d missing app(s) were skipped. Widgets are not included — re-add them after importing.</string>
+    <string name="import_confirm_message">%1$d app shortcut(s) and %2$d folder(s) will be imported. %3$d missing app(s) were skipped. %4$d widget(s) will be restored where their app is installed and you allow the binding.</string>
     <string name="import_success">Layout imported</string>
+    <!-- Section 65-66 (v0.5.0 completion pass): itemised imported-widget restore report. -->
+    <string name="widget_restore_title">Widgets restored</string>
+    <string name="widget_restore_restored">%1$d widget(s) restored</string>
+    <string name="widget_restore_unconfigured">%1$d restored but need setting up again — their settings could not be carried over</string>
+    <string name="widget_restore_missing_provider">%1$d skipped — their app isn\'t installed</string>
+    <string name="widget_restore_not_permitted">%1$d skipped — binding wasn\'t allowed</string>
+    <string name="widget_restore_no_room">%1$d skipped — no room on the home screen</string>
     <string name="reset_confirm_title">Reset Home Layout?</string>
     <string name="reset_confirm_message">This removes every app shortcut, folder, widget, and dock pin from the home screen. Installed apps themselves are not affected.</string>
     <string name="reset_success">Home layout reset</string>

@@ -46,8 +46,12 @@ for how to add another.
 - **ReLite Home** — a lightweight Android launcher (Kotlin, standard
   Views, no Jetpack Compose overhead). One UI-inspired ergonomics —
   large touch targets, rounded geometry, one-handed reach — built with
-  entirely original assets and code. No ads, no analytics, no accounts,
-  no `INTERNET` permission.
+  entirely original assets and code, plus a few numeric values (accent
+  colors, the 24dp safe-area margin, the 26/20/12dp radius scale) taken
+  from Samsung's openly published One UI Design Guidelines; see
+  `NOTICE.md` for exactly what is and isn't borrowed. No Samsung assets
+  are used or redistributed. No ads, no analytics, no accounts, no
+  `INTERNET` permission.
 - **Per-device profiles** — `safe` / `performance` / `maximum`, each
   backed by a documented, protected-package-respecting classification
   database per device, not a hard-coded blocklist.

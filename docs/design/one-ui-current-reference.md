@@ -113,14 +113,85 @@ folder view are implemented from the master plan's description with
 `LOW_CONFIDENCE` on the exact span, pending a citable source or direct
 device comparison.
 
-## What this reference deliberately does not include
+## Visual specifications (added in the v0.5.0 visual pass)
 
-Pixel-level margin/spacing measurements (master plan section 71) require
-either a physical Samsung device or usable reference screenshots at known
-DPI to measure against — neither was available in this environment. Home
-geometry in this pass uses ReLite's own existing spacing constants,
-adjusted qualitatively toward the *documented* behaviors above (bottom
-search, bottom edit actions, 4×6/5×6 grids), not toward measured Samsung
-pixel values. See `docs/design/one-ui-parity-matrix.md` for what's graded
-`HIGH_CONFIDENCE` (behavior match, citable) versus what remains
-`LOW_CONFIDENCE` (geometry approximated, not measured).
+The earlier revision of this document recorded that no pixel-level values
+were available. That turned out to be **wrong** — not because a device
+appeared, but because Samsung publishes them. The **"One UI Design
+Guidelines"** PDF, distributed openly on Samsung's design site for
+third-party developers, contains concrete figures. Fetched 2026-08-12
+from
+<https://design.samsung.com/global/contents/one-ui/download/oneui_design_guide_eng.pdf>.
+
+Everything below is quoted from that document, with its page number.
+
+### Margins and keylines (Architecture 04, p.14)
+
+> One UI recommends to allow at minimum **24dp margins on each side** and
+> keep placing components to display information within safe area if
+> touch input is required.
+
+The stated purpose is that on rounded-corner and edge displays, on-screen
+elements must sit before the start of the curve so a finger doesn't slip
+off them and so nothing is obscured.
+
+**ReLite decision:** `screen_margin_horizontal = 24dp`, applied as the
+Home grid's horizontal padding and the dock's horizontal margin.
+
+### Thumbnail radius (Visual Design 04, p.67)
+
+> When using a rounded-corner rectangle for a focus block or image
+> thumbnail, it's recommended that you use the following thumbnail radius
+> value according to the screen grid and target: **26dp / 26dp / 20dp /
+> 12dp**.
+
+**ReLite decision:** a three-step scale — `radius_large` 26dp (dock,
+folder — the largest focus blocks), `radius_medium` 20dp (context-menu
+card), `radius_small` 12dp (app icons). The document gives the values but
+not a rule mapping each to a specific component class, so the assignment
+of step to surface is ReLite's judgement; only the *scale* is sourced.
+
+### Color (Visual Design 02, p.62-63)
+
+The guide names three color roles and their uses:
+
+| Role | Applies to | Light | Dark |
+|---|---|---|---|
+| Primary | App icons, floating action buttons, input fields, focused items | `#0381fe` | `#0381fe` |
+| Primary dark | App bar text, text buttons, dialog buttons | `#0072de` | `#3e91ff` |
+| Color control activated | Checkboxes, radio buttons, switches | `#3e91ff` | `#3e91ff` |
+
+**ReLite decision:** adopted as the accent palette, including the
+light/dark split on "Primary dark" and `colorControlActivated` for
+switches specifically — before this, AppCompat's own default accent was
+tinting the Settings toggles, visibly off-palette.
+
+Backgrounds are **not** specified numerically anywhere in the guide — it
+describes them only as "simple, calm colors" and "monotone in both Light
+and Dark mode". ReLite's neutrals therefore remain its own and are not
+claimed as parity.
+
+### Typography (Visual Design 03, p.66)
+
+> The default font used in One UI is **Roboto**.
+
+**ReLite decision:** nothing to do — Roboto is Android's own system
+default, which this app already uses (it bundles no font). This is the
+one typography claim that can be matched exactly without shipping
+anything of Samsung's.
+
+The same section states a capitalization convention ("capitalize the
+first letter in every word and sentence used for components"), but the
+wording is ambiguous between Title Case and sentence case and the
+clarifying before/after examples are images, not text. Observed One UI
+menus use sentence case, which ReLite already follows, so this was left
+alone rather than changed on a guess.
+
+## What this reference still does not include
+
+Motion is described only qualitatively in the guide (its "Natural",
+"Seamless", "Tangible" principles, p.72-77) — no durations, no easing
+curves, no numeric values of any kind. Haptic patterns likewise. Icon
+sizing, dock height, page-indicator geometry and cell padding are also
+unspecified. Those remain ReLite's own measurements and are graded
+accordingly in `docs/design/one-ui-parity-matrix.md`.

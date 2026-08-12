@@ -1,5 +1,6 @@
 package io.relite.home.ui.folder
 
+import io.relite.home.ui.menu.showOneUi
 import io.relite.home.ui.LauncherHost
 import io.relite.home.ui.launcherHost
 
@@ -8,6 +9,7 @@ import android.app.Dialog
 import android.os.Bundle
 import android.widget.EditText
 import android.widget.TextView
+import androidx.core.view.doOnLayout
 import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -65,6 +67,16 @@ class FolderSheetDialog : DialogFragment() {
         }
 
         refresh()
+
+        // Section 5/73 (v0.5.0 completion pass): a folder now grows open on
+        // the shared appear transition rather than materialising instantly —
+        // the folder open/close motion the parity matrix recorded as absent.
+        // The pivot is the sheet's own centre because, unlike a context menu,
+        // this dialog is centred on screen rather than anchored to the icon
+        // that opened it.
+        view.doOnLayout {
+            io.relite.home.ui.motion.MotionTokens.popIn(view, pivotX = view.width / 2f, pivotY = view.height / 2f)
+        }
 
         return Dialog(requireContext(), R.style.Theme_ReliteHome_FolderDialog).apply {
             setContentView(view)
@@ -152,7 +164,7 @@ class FolderSheetDialog : DialogFragment() {
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     private fun showAddAppsDialog() {
@@ -185,7 +197,7 @@ class FolderSheetDialog : DialogFragment() {
             .setView(recycler)
             .setNegativeButton(R.string.cancel, null)
             .create()
-        dialog.show()
+        dialog.showOneUi()
     }
 
     companion object {

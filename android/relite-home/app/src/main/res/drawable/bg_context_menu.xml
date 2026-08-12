@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Section 107 (v0.5.0): same rounded-surface language as bg_dock/bg_folder. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/relite_dock_background" />
+    <solid android:color="@color/relite_menu_background" />
     <corners android:radius="@dimen/context_menu_corner_radius" />
 </shape>

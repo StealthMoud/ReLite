@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Rounded surface for bottom-anchored dialogs. Without this the platform's
+    default square dialog panel showed through, which put a hard-cornered
+    box in the middle of a UI whose every other floating surface (dock,
+    folder, context menu, settings focus blocks) is rounded — see
+    ui/menu/OneUiDialog.kt. radius_large is the top step of the guide's own
+    thumbnail-radius scale (Visual Design 04, p.67), matching the other
+    large surfaces.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/relite_menu_background" />
+    <corners android:radius="@dimen/radius_large" />
+</shape>

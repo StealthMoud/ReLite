@@ -131,6 +131,25 @@ class WorkspaceGridLayout @JvmOverloads constructor(
         addView(child, LayoutParams(column, row, spanColumns, spanRows))
     }
 
+    /**
+     * Section 11 (v0.5.0 completion pass): live-repositions an already-added
+     * child (the widget edit overlay, mid-drag) without removing/re-adding
+     * it — [View.setLayoutParams] triggers [requestLayout] on its own, and
+     * this view's [onMeasure]/[onLayout] are cheap enough (plain arithmetic,
+     * no child remeasurement beyond what a span change already needs) to
+     * call on every drag step.
+     */
+    fun updateCellPosition(child: View, column: Int, row: Int) {
+        val lp = child.layoutParams as LayoutParams
+        child.layoutParams = LayoutParams(column, row, lp.spanColumns, lp.spanRows)
+    }
+
+    /** Same as [updateCellPosition], for a live resize-handle drag. */
+    fun updateCellSpan(child: View, spanColumns: Int, spanRows: Int) {
+        val lp = child.layoutParams as LayoutParams
+        child.layoutParams = LayoutParams(lp.column, lp.row, spanColumns, spanRows)
+    }
+
     class LayoutParams(
         val column: Int,
         val row: Int,

@@ -16,6 +16,17 @@
         android:clipToPadding="false"
         android:paddingHorizontal="@dimen/grid_cell_padding" />
 
+    <!-- The Apps screen pages horizontally in Custom order, and until now
+         gave no indication of how many pages there were or which one was
+         showing. One UI shows the same indicator here as on Home. Hidden
+         automatically for a single page, and in Alphabetical order, which
+         scrolls vertically (see AppDrawerFragment.applySortModeToLayout). -->
+    <io.relite.home.ui.home.PageIndicatorView
+        android:id="@+id/drawer_page_indicator"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp" />
+
     <LinearLayout
         android:id="@+id/drawer_search_bar"
         android:layout_width="match_parent"
@@ -37,7 +48,8 @@
         <EditText
             android:id="@+id/drawer_search"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/touch_target_min"
             android:layout_weight="1"
             android:layout_marginStart="8dp"
             android:background="@android:color/transparent"

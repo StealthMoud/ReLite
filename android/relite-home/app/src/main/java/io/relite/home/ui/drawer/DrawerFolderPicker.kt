@@ -1,5 +1,6 @@
 package io.relite.home.ui.drawer
 
+import io.relite.home.ui.menu.showOneUi
 import android.app.AlertDialog
 import android.content.Context
 import android.widget.EditText
@@ -35,7 +36,7 @@ object DrawerFolderPicker {
                 }
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     private fun promptNewFolder(context: Context, componentKey: String, onDone: () -> Unit) {
@@ -49,7 +50,7 @@ object DrawerFolderPicker {
                 onDone()
             }
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .showOneUi()
     }
 
     private fun createFolder(context: Context, label: String, componentKey: String) {

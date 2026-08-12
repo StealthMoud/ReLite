@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentCallbacks2
 import android.content.pm.LauncherApps
 import io.relite.home.data.AppRepository
+import io.relite.home.data.DefaultLayout
 import io.relite.home.data.FileStorage
 import io.relite.home.data.WorkspaceController
 import io.relite.home.data.WorkspaceRepository
@@ -97,6 +98,7 @@ class ReliteHomeApplication : Application() {
             DOCK_CAPACITY,
         )
         workspaceController = WorkspaceController(workspaceRepository, DOCK_CAPACITY)
+        seedDefaultLayoutOnFirstRun()
 
         val launcherApps = getSystemService(LauncherApps::class.java)
         iconCache = IconCache(launcherApps)
@@ -146,6 +148,26 @@ class ReliteHomeApplication : Application() {
         }
 
         appRepository.start()
+    }
+
+    /**
+     * Places a starting layout the very first time this launcher runs, so
+     * Home opens as a usable home screen rather than a bare wallpaper with
+     * an empty dock — see [DefaultLayout] for what is placed and why it is
+     * resolved by role rather than by package name.
+     *
+     * Deliberately guarded on [WorkspaceRepository.lastLoadWasFirstRun]
+     * (no layout file at all) rather than "the workspace is empty": a user
+     * who clears their home screen has a persisted empty layout, and
+     * re-seeding that on next launch would override their choice every
+     * time. A failed seed is silent — an unseeded home screen is a poor
+     * first impression, not a reason to refuse to start.
+     */
+    private fun seedDefaultLayoutOnFirstRun() {
+        if (!workspaceRepository.lastLoadWasFirstRun) return
+        val installed = appRepository.loadAll()
+        val seeded = DefaultLayout.build(this, installed, workspaceController.current().homeGrid) ?: return
+        workspaceController.replaceWorkspace(seeded)
     }
 
     companion object {

@@ -10,9 +10,10 @@
         not actually needed:
 
         - QUERY_ALL_PACKAGES: every app-discovery path in this codebase
-          goes through LauncherApps (see data/AppRepository.kt), and the
-          system exempts the app holding the default-launcher role from
-          package-visibility filtering when using that API.
+          goes through LauncherApps (see data/AppRepository.kt). This
+          broad permission is genuinely not needed — but see the
+          <queries> element below, because the original reasoning for
+          removing it went one step too far.
         - BIND_APPWIDGET: this is only required by AppWidget *providers*,
           not *hosts*. ReLite Home hosts widgets via the standard
           ACTION_APPWIDGET_PICK system picker + AppWidgetHost
@@ -22,6 +23,34 @@
           get flagged by lint.
     -->
 
+
+    <!--
+        Package visibility (Android 11+ / API 30).
+
+        Without this, ReLite Home's app drawer is badly incomplete: on the
+        RMX5303 it listed **10 apps out of 405 installed**. The manifest
+        previously asserted that no declaration was needed because "the
+        system exempts the app holding the default-launcher role from
+        package-visibility filtering" when using LauncherApps. That was
+        measured directly and is **false on this device**: ReLite was made
+        the actual ROLE_HOME holder (`cmd role get-role-holders
+        android.app.role.HOME` -> io.relite.home), its process restarted,
+        and the drawer still showed the same 10 apps.
+
+        The correct, narrow declaration is this <queries> element: it makes
+        exactly the apps that publish a LAUNCHER activity visible — which
+        is precisely, and only, what a launcher needs to enumerate. It is
+        not QUERY_ALL_PACKAGES (still not declared, still not needed);
+        that permission is far broader, is policy-restricted on Play, and
+        would grant visibility of apps this launcher has no business
+        seeing.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".ReliteHomeApplication"

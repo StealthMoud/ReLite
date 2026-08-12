@@ -32,6 +32,27 @@ class DrawerGridAdapter(
     private val onFolderLongClick: (DrawerFolder, View) -> Boolean,
 ) : ListAdapter<DrawerItem, RecyclerView.ViewHolder>(DIFF) {
 
+    /**
+     * Explicit tile width for the horizontally-paged Custom-order grid, or 0
+     * to keep `item_app_drawer`'s own `match_parent`.
+     *
+     * A real bug found live on the RMX5303: Custom order rendered as a
+     * single full-width column of apps instead of a 4-wide page. In a
+     * *vertical* `GridLayoutManager` the item's `match_parent` width means
+     * "fill one span" — correct. In the *horizontal* one Custom order uses,
+     * width is the scrolling axis, so it is unconstrained and `match_parent`
+     * resolves to the RecyclerView's whole width; only the height gets
+     * divided into spans. Every tile was therefore a full screen wide and
+     * exactly one column was ever visible. The span (row) height is already
+     * correct in both orientations, so only the width needs pinning here.
+     */
+    var itemWidthPx: Int = 0
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyDataSetChanged()
+        }
+
     override fun getItemViewType(position: Int): Int = when (getItem(position)) {
         is DrawerItem.AppItem -> VIEW_TYPE_APP
         is DrawerItem.FolderItem -> VIEW_TYPE_FOLDER
@@ -42,7 +63,17 @@ class DrawerGridAdapter(
         return ViewHolder(view)
     }
 
+    private fun applyItemWidth(holder: RecyclerView.ViewHolder) {
+        val params = holder.itemView.layoutParams ?: return
+        val target = if (itemWidthPx > 0) itemWidthPx else ViewGroup.LayoutParams.MATCH_PARENT
+        if (params.width != target) {
+            params.width = target
+            holder.itemView.layoutParams = params
+        }
+    }
+
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        applyItemWidth(holder)
         val vh = holder as ViewHolder
         when (val item = getItem(position)) {
             is DrawerItem.AppItem -> {

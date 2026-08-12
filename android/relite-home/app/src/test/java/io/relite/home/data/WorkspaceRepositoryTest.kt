@@ -1,6 +1,7 @@
 package io.relite.home.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -175,7 +176,7 @@ class WorkspaceRepositoryTest {
     // --- portable layout export/import (sections 60-66, 111-112) ---
 
     @Test
-    fun `exportPortable then importPortable round-trips apps, folders, and dock but drops widgets`() {
+    fun `exportPortable then importPortable round-trips apps, folders, and dock, and carries widgets as descriptors`() {
         val repo = WorkspaceRepository(InMemoryStorage())
         val workspace = Workspace(
             pageCount = 1,
@@ -195,9 +196,84 @@ class WorkspaceRepositoryTest {
         val result = repo.importPortable(exported, installed) as WorkspaceRepository.ImportResult.Success
 
         assertTrue(result.missingApps.isEmpty())
-        assertEquals(2, result.candidate.items.size) // widget dropped
-        assertTrue(result.candidate.items.none { it is WorkspaceItem.WidgetIcon })
         assertEquals(listOf("io.relite.phone/Main"), result.candidate.dockComponentKeys)
+
+        // Section 65-66: the widget is deliberately NOT a candidate item — a
+        // WidgetIcon needs a live appWidgetId, and none exists until the
+        // importing device actually re-binds the provider.
+        assertEquals(2, result.candidate.items.size)
+        assertTrue(result.candidate.items.none { it is WorkspaceItem.WidgetIcon })
+
+        // ...but it is no longer *lost*: everything portable about it survives.
+        val descriptor = result.pendingWidgets.single()
+        assertEquals("io.relite.widgets/Clock", descriptor.providerComponent)
+        assertEquals(GridPosition(0, 2, 0), descriptor.position)
+        assertEquals(1, descriptor.spanColumns)
+        assertEquals(1, descriptor.spanRows)
+    }
+
+    @Test
+    fun `exportPortable omits a widget with no recorded provider, since nothing about it is portable`() {
+        val repo = WorkspaceRepository(InMemoryStorage())
+        // A schema-1 file predates providerComponent entirely (see itemFromJson);
+        // such a widget deserializes with a blank provider and has nothing a
+        // descriptor could name on the other side.
+        val workspace = Workspace(
+            pageCount = 1,
+            items = listOf(
+                WorkspaceItem.WidgetIcon(
+                    "w1", GridPosition(0, 0, 0), appWidgetId = 7, spanColumns = 1, spanRows = 1,
+                    providerComponent = "",
+                ),
+            ),
+            dockComponentKeys = emptyList(),
+        )
+
+        val result = repo.importPortable(repo.exportPortable(workspace), emptySet())
+            as WorkspaceRepository.ImportResult.Success
+
+        assertTrue(result.pendingWidgets.isEmpty())
+    }
+
+    @Test
+    fun `importPortable of a pre-descriptor export yields no widgets rather than failing`() {
+        val repo = WorkspaceRepository(InMemoryStorage())
+        // An export written by any earlier ReLite version has no "widgets"
+        // key at all. It must still import cleanly — the key is additive.
+        val legacyExport = repo.serialize(
+            Workspace(
+                pageCount = 1,
+                items = listOf(WorkspaceItem.AppIcon("a1", GridPosition(0, 0, 0), "io.relite.camera/Main")),
+                dockComponentKeys = emptyList(),
+            ),
+        )
+
+        val result = repo.importPortable(legacyExport, setOf("io.relite.camera/Main"))
+            as WorkspaceRepository.ImportResult.Success
+
+        assertEquals(1, result.candidate.items.size)
+        assertTrue(result.pendingWidgets.isEmpty())
+    }
+
+    @Test
+    fun `parsePortableWidgets skips a malformed descriptor without losing the readable ones`() {
+        val repo = WorkspaceRepository(InMemoryStorage())
+        val raw = """
+            {"schema":3,"pageCount":1,"dock":[],"homeGrid":"FOUR_BY_SIX","defaultPage":0,"items":[],
+             "widgets":[
+               {"providerComponent":"io.relite.widgets/Clock","position":{"page":0,"column":0,"row":0},"spanColumns":2,"spanRows":1},
+               {"providerComponent":"not a component","position":{"page":0,"column":2,"row":0},"spanColumns":1,"spanRows":1},
+               {"providerComponent":"io.relite.widgets/Weather"},
+               {"providerComponent":"io.relite.widgets/News","position":{"page":0,"column":3,"row":0},"spanColumns":1,"spanRows":1}
+             ]}
+        """.trimIndent()
+
+        val parsed = repo.parsePortableWidgets(raw)
+
+        assertEquals(
+            listOf("io.relite.widgets/Clock", "io.relite.widgets/News"),
+            parsed.map { it.providerComponent },
+        )
     }
 
     @Test
@@ -345,5 +421,26 @@ class WorkspaceRepositoryTest {
         val repo = WorkspaceRepository(InMemoryStorage(json))
 
         assertEquals(1, repo.load().defaultPage)
+    }
+
+    // --- PortableWidget flatten/unflatten (sections 7/65-66) ---
+    // Load-bearing for crash recovery: this is how an in-progress widget
+    // restore survives the Activity recreation the system bind-consent
+    // dialog can trigger. A silent round-trip bug here would strand the
+    // remaining widgets and leak an allocated host id.
+
+    @Test
+    fun `a PortableWidget round-trips through flatten and unflatten`() {
+        val original = PortableWidget("io.relite.widgets/io.relite.widgets.Clock", GridPosition(2, 3, 4), 2, 3)
+
+        assertEquals(original, PortableWidget.unflatten(original.flatten()))
+    }
+
+    @Test
+    fun `unflatten rejects malformed records instead of throwing or half-parsing`() {
+        assertNull(PortableWidget.unflatten(""))
+        assertNull(PortableWidget.unflatten("io.relite.widgets/Clock"))
+        assertNull(PortableWidget.unflatten("io.relite.widgets/Clock|0|0|0|1")) // five fields, not six
+        assertNull(PortableWidget.unflatten("io.relite.widgets/Clock|0|0|0|1|x")) // non-numeric span
     }
 }

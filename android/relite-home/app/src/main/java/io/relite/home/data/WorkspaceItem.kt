@@ -53,6 +53,64 @@ sealed class WorkspaceItem {
 }
 
 /**
+ * Section 21/65-66 (v0.5.0 completion pass): a widget as it survives a
+ * layout *export* — everything about a placed widget that still means
+ * something on another device or another install, and nothing that
+ * doesn't.
+ *
+ * A [WorkspaceItem.WidgetIcon]'s `appWidgetId` is a device-local integer
+ * handed out by this install's [android.appwidget.AppWidgetHost]; it is
+ * meaningless anywhere else, which is why exports used to drop widgets
+ * entirely rather than carry a number that would be actively wrong on
+ * import. The provider component plus the grid footprint, though, are
+ * fully portable: given the same provider installed on the importing
+ * device, the widget can be re-bound to a *fresh* id at the same place
+ * and the same size.
+ *
+ * What this deliberately cannot carry: a widget's **configuration**. A
+ * configured widget's settings live in the provider app's own storage
+ * keyed by the old `appWidgetId`; a rebind necessarily allocates a new
+ * id, so a provider with a configure Activity comes back unconfigured
+ * (see [io.relite.home.ui.widget.WidgetRestorer], which reports exactly
+ * these rather than pretending the restore was complete).
+ */
+data class PortableWidget(
+    val providerComponent: String,
+    val position: GridPosition,
+    val spanColumns: Int,
+    val spanRows: Int,
+) {
+    /**
+     * A compact single-string form, so an in-progress restore can be held in
+     * a saved-instance-state [android.os.Bundle] across Activity recreation
+     * (the system widget-bind consent dialog can and does recreate its
+     * caller on low-memory devices — the same hazard
+     * `WidgetPickerActivity` guards its own pending flow against).
+     *
+     * `|` is a safe separator: a component key is validated against
+     * `[a-zA-Z0-9_.]+/[a-zA-Z0-9_.]+` before a descriptor is ever built, so
+     * it can never contain one.
+     */
+    fun flatten(): String =
+        "$providerComponent|${position.page}|${position.column}|${position.row}|$spanColumns|$spanRows"
+
+    companion object {
+        /** Inverse of [flatten]; null for anything that isn't a well-formed six-field record. */
+        fun unflatten(raw: String): PortableWidget? {
+            val parts = raw.split('|')
+            if (parts.size != 6) return null
+            val numbers = parts.drop(1).map { it.toIntOrNull() ?: return null }
+            return PortableWidget(
+                providerComponent = parts[0],
+                position = GridPosition(numbers[0], numbers[1], numbers[2]),
+                spanColumns = numbers[3],
+                spanRows = numbers[4],
+            )
+        }
+    }
+}
+
+/**
  * Section 55-57 (v0.5.0): the two Home grids current One UI (7) actually
  * offers — see docs/design/one-ui-current-reference.md for the sourced
  * claim. 4×6 is a strict superset of ReLite's previous fixed 4×5 grid (same

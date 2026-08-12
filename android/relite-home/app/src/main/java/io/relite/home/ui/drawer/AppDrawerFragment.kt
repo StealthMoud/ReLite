@@ -37,6 +37,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
 
     private lateinit var adapter: DrawerGridAdapter
     private lateinit var recycler: RecyclerView
+    private lateinit var pageIndicator: io.relite.home.ui.home.PageIndicatorView
     private lateinit var dragHelper: ItemTouchHelper
     private var allApps: List<AppEntry> = emptyList()
     private var folders: List<DrawerFolder> = emptyList()
@@ -81,6 +82,16 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         recycler.adapter = adapter
         recycler.setHasFixedSize(true)
         recycler.clipToPadding = false
+
+        pageIndicator = view.findViewById(R.id.drawer_page_indicator)
+        // This one draws over the drawer's own opaque background, not the
+        // wallpaper — see PageIndicatorView.useOnSurfaceColors.
+        pageIndicator.useOnSurfaceColors()
+        recycler.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                updatePageIndicator()
+            }
+        })
 
         dragHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
             ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT,
@@ -141,7 +152,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
 
         allApps = app.appRepository.loadAll()
         folders = AppsPreference.getFolders(requireContext())
-        adapter.submitList(applyCurrentQuery())
+        adapter.submitList(applyCurrentQuery()) { updatePageIndicator() }
 
         appsChangedSubscription = app.appRepository.onAppsChanged {
             refreshAppsAndFolders(app)
@@ -153,7 +164,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 currentQuery = s?.toString().orEmpty()
                 applySortModeToLayout() // search always renders vertically, sort mode or not
-                adapter.submitList(applyCurrentQuery())
+                adapter.submitList(applyCurrentQuery()) { updatePageIndicator() }
             }
             override fun afterTextChanged(s: Editable?) {}
         })
@@ -167,7 +178,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     private fun refreshAppsAndFolders(app: ReliteHomeApplication) {
         allApps = app.appRepository.loadAll()
         folders = AppsPreference.getFolders(requireContext())
-        adapter.submitList(applyCurrentQuery())
+        adapter.submitList(applyCurrentQuery()) { updatePageIndicator() }
     }
 
     private fun slotOf(item: io.relite.home.data.DrawerItem): String = when (item) {
@@ -192,8 +203,74 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         val app = requireActivity().application as ReliteHomeApplication
         val showingCustomGrid = sortMode == AppsSortMode.CUSTOM && currentQuery.isEmpty()
         val orientation = if (showingCustomGrid) RecyclerView.HORIZONTAL else RecyclerView.VERTICAL
-        recycler.layoutManager = GridLayoutManager(requireContext(), app.workspaceController.gridSpec.columns, orientation, false)
+        val columns = app.workspaceController.gridSpec.columns
+        val rows = app.workspaceController.gridSpec.rows
+
+        // GridLayoutManager's span count is measured across the axis
+        // *perpendicular* to scrolling. Vertically that is the column count;
+        // horizontally — which is what Custom order uses — it is the ROW
+        // count. Passing `columns` in both cases (as this did) gave the
+        // paged Apps screen only 4 rows instead of 6, so a page held 16 apps
+        // in four sparse bands with large gaps rather than a dense 4x6 of
+        // 24. Visible immediately on the RMX5303 next to any real One UI
+        // Apps screen.
+        val spanCount = if (showingCustomGrid) rows else columns
+        recycler.layoutManager = GridLayoutManager(requireContext(), spanCount, orientation, false)
         dragHelper.attachToRecyclerView(if (showingCustomGrid) recycler else null)
+
+        // Custom order pages horizontally, where the tile width is *not*
+        // derived from the span count and has to be set explicitly, or every
+        // page renders as one full-width column — see
+        // DrawerGridAdapter.itemWidthPx.
+        //
+        // Computed from the display width rather than the RecyclerView's own
+        // measured width, deliberately: this runs before the first layout
+        // (and again on every sort-mode change), so waiting for a real
+        // measurement meant setting the width from inside a layout pass,
+        // where the adapter's notifyDataSetChanged is ignored and the fix
+        // silently did nothing — observed on the RMX5303. The recycler is
+        // match_parent with a known horizontal padding, so the display width
+        // gives the same answer without the timing hazard.
+        adapter.itemWidthPx = if (showingCustomGrid) {
+            val horizontalPadding = resources.getDimensionPixelSize(R.dimen.grid_cell_padding) * 2
+            ((resources.displayMetrics.widthPixels - horizontalPadding) / columns).coerceAtLeast(1)
+        } else {
+            0
+        }
+        updatePageIndicator()
+    }
+
+    /**
+     * Keeps the Apps screen's page indicator in step with the paged grid.
+     *
+     * Only Custom order pages horizontally; Alphabetical order (and any
+     * active search) is a vertical scroll with no pages to indicate, so the
+     * indicator hides entirely rather than showing a meaningless single dot.
+     */
+    private fun updatePageIndicator() {
+        if (!::pageIndicator.isInitialized) return
+        val app = requireActivity().application as ReliteHomeApplication
+        val spec = app.workspaceController.gridSpec
+        val perPage = spec.columns * spec.rows
+        val horizontal = (recycler.layoutManager as? GridLayoutManager)?.orientation == RecyclerView.HORIZONTAL
+
+        if (!horizontal || perPage <= 0 || adapter.itemCount == 0) {
+            pageIndicator.visibility = View.GONE
+            return
+        }
+        val pages = ((adapter.itemCount + perPage - 1) / perPage).coerceAtLeast(1)
+        if (pages <= 1) {
+            pageIndicator.visibility = View.GONE
+            return
+        }
+        pageIndicator.visibility = View.VISIBLE
+        pageIndicator.pageCount = pages
+        // Derived from scroll offset rather than the first-visible item, so
+        // the indicator tracks the drag continuously instead of jumping only
+        // once a whole new column has scrolled in.
+        val extent = recycler.computeHorizontalScrollExtent().coerceAtLeast(1)
+        pageIndicator.currentPage =
+            ((recycler.computeHorizontalScrollOffset() + extent / 2) / extent).coerceIn(0, pages - 1)
     }
 
     /**
@@ -228,32 +305,46 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
     }
 
     /** Section 89-90 (v0.5.0): minimum viable "More" menu — Sort and Home screen settings. */
+    /**
+     * The Apps screen's "More options" menu.
+     *
+     * Uses the shared rounded-card [io.relite.home.ui.menu.LauncherContextMenu]
+     * rather than a system `AlertDialog.setItems`. The v0.5.0 pass replaced
+     * the system menu at every *long-press* site but missed this one and
+     * [showSortChooser], because both open on a plain click — so the Apps
+     * screen still popped a square-cornered system dialog in the middle of
+     * an otherwise fully rounded UI. Caught by looking at the running app on
+     * the RMX5303, not by any test.
+     */
     private fun showMoreMenu() {
-        val options = listOf(getString(R.string.action_sort), getString(R.string.action_home_settings))
-        AlertDialog.Builder(requireContext())
-            .setItems(options.toTypedArray()) { _, which ->
-                when (which) {
-                    0 -> showSortChooser()
-                    1 -> startActivity(Intent(requireContext(), HomeSettingsActivity::class.java))
-                }
+        val anchor = requireView().findViewById<View>(R.id.drawer_more)
+        val actions = listOf(
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_SORT, getString(R.string.action_sort)),
+            io.relite.home.ui.menu.LauncherAction(MENU_ID_HOME_SETTINGS, getString(R.string.action_home_settings)),
+        )
+        io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
+            when (actionId) {
+                MENU_ID_SORT -> showSortChooser()
+                MENU_ID_HOME_SETTINGS -> startActivity(Intent(requireContext(), HomeSettingsActivity::class.java))
             }
-            .show()
+        }
     }
 
     private fun showSortChooser() {
+        val anchor = requireView().findViewById<View>(R.id.drawer_more)
         val modes = listOf(
             AppsSortMode.CUSTOM to getString(R.string.sort_custom_order),
             AppsSortMode.ALPHABETICAL to getString(R.string.sort_alphabetical_order),
         )
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.action_sort)
-            .setItems(modes.map { it.second }.toTypedArray()) { _, which ->
-                sortMode = modes[which].first
-                AppsPreference.setSortMode(requireContext(), sortMode)
-                applySortModeToLayout()
-                adapter.submitList(applyCurrentQuery())
-            }
-            .show()
+        val actions = modes.mapIndexed { index, (_, label) ->
+            io.relite.home.ui.menu.LauncherAction(index, label)
+        }
+        io.relite.home.ui.menu.LauncherContextMenu.show(anchor, actions) { actionId ->
+            sortMode = modes[actionId].first
+            AppsPreference.setSortMode(requireContext(), sortMode)
+            applySortModeToLayout()
+            adapter.submitList(applyCurrentQuery()) { updatePageIndicator() }
+        }
     }
 
     /**
@@ -345,5 +436,7 @@ class AppDrawerFragment : Fragment(R.layout.fragment_app_drawer) {
         private const val MENU_ID_ADD_TO_APPS_FOLDER = 5
         private const val MENU_ID_OPEN_APPS_FOLDER = 6
         private const val MENU_ID_DELETE_APPS_FOLDER = 7
+        private const val MENU_ID_SORT = 8
+        private const val MENU_ID_HOME_SETTINGS = 9
     }
 }
